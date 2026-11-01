@@ -1,30 +1,43 @@
 #!/usr/bin/env python3
 """Volver a verde: finanzas del Airbnb familiar.
 
-Servidor local sin dependencias (solo Python 3.9+). Guarda todo en data.db (SQLite).
+Servidor sin dependencias (solo Python 3.9+). Guarda los datos en data.db (SQLite)
+y los comprobantes en la carpeta uploads/.
 
     python3 app.py            # abre http://localhost:8000
     python3 app.py --demo     # carga datos de ejemplo (solo si la base está vacía)
+
+Variables de entorno: PORT, HOST (usa 0.0.0.0 en un servidor), VAV_DB, VAV_UPLOADS.
 """
 import csv
+import hashlib
+import hmac
 import io
 import json
 import os
 import random
+import secrets
 import sqlite3
 import sys
 import unicodedata
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from http.cookies import SimpleCookie
+from urllib.parse import parse_qs, unquote, urlparse
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("VAV_DB", os.path.join(BASE, "data.db"))
 STATIC = os.path.join(BASE, "static")
 PORT = int(os.environ.get("PORT", "8000"))
+HOST = os.environ.get("HOST", "127.0.0.1")
+UPLOADS = os.environ.get("VAV_UPLOADS", os.path.join(os.path.dirname(DB_PATH), "uploads"))
+MAX_ARCHIVO = 15 * 1024 * 1024  # 15 MB por comprobante
+TIPOS_COMPROBANTE = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
+                     "image/heic": ".heic", "image/heif": ".heif", "application/pdf": ".pdf",
+                     "application/xml": ".xml", "text/xml": ".xml"}
 
 CATEGORIAS = [
-    "Limpieza", "Lavandería", "Luz", "Agua", "Gas", "Internet",
+    "Limpieza", "Lavandería", "Luz", "Agua", "Gas", "Internet", "Gasolina",
     "Mantenimiento", "Insumos", "Mobiliario y equipo", "Predial",
     "Contador", "Sueldos", "Otros",
 ]
@@ -66,6 +79,27 @@ CREATE TABLE IF NOT EXISTS movimientos (
     monto REAL NOT NULL,
     concepto TEXT DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    usuario TEXT NOT NULL UNIQUE,
+    hash TEXT NOT NULL,
+    admin INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS sesiones (
+    token TEXT PRIMARY KEY,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    creada TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS comprobantes (
+    id INTEGER PRIMARY KEY,
+    gasto_id INTEGER NOT NULL REFERENCES gastos(id) ON DELETE CASCADE,
+    archivo TEXT NOT NULL,
+    nombre_original TEXT DEFAULT '',
+    tipo TEXT DEFAULT '',
+    subido_por INTEGER REFERENCES usuarios(id),
+    fecha TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS config (
     clave TEXT PRIMARY KEY,
     valor TEXT
@@ -90,6 +124,8 @@ def init_db():
         for c, d in (("personal", 0), ("factura", 0), ("de_la_cuenta", 1)):
             if c not in cols:
                 con.execute(f"ALTER TABLE gastos ADD COLUMN {c} INTEGER NOT NULL DEFAULT {d}")
+        if "registrado_por" not in cols:
+            con.execute("ALTER TABLE gastos ADD COLUMN registrado_por INTEGER REFERENCES usuarios(id)")
         if con.execute("SELECT COUNT(*) FROM cuartos").fetchone()[0] == 0:
             con.executemany("INSERT INTO cuartos (nombre) VALUES (?)",
                             [(f"Cuarto {i}",) for i in range(1, 6)])
@@ -100,6 +136,33 @@ def init_db():
 
 def rows(con, sql, args=()):
     return [dict(r) for r in con.execute(sql, args).fetchall()]
+
+
+# ---------------------------------------------------------------- usuarios
+
+def hash_password(pw, sal=None):
+    sal = sal or secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac("sha256", pw.encode(), sal.encode(), 200_000).hex()
+    return f"{sal}${h}"
+
+
+def password_ok(pw, guardado):
+    sal, _ = guardado.split("$", 1)
+    return hmac.compare_digest(hash_password(pw, sal), guardado)
+
+
+def crear_usuario(con, nombre, usuario, pw, admin=False):
+    usuario = norm(usuario).replace(" ", "")
+    if not nombre or not usuario or len(pw or "") < 6:
+        raise ValueError("Falta nombre o usuario, o la contraseña tiene menos de 6 caracteres")
+    con.execute("INSERT INTO usuarios (nombre, usuario, hash, admin) VALUES (?,?,?,?)",
+                (nombre.strip(), usuario, hash_password(pw), int(bool(admin))))
+
+
+def nueva_sesion(con, usuario_id):
+    token = secrets.token_urlsafe(32)
+    con.execute("INSERT INTO sesiones VALUES (?,?,?)", (token, usuario_id, datetime.now().isoformat()))
+    return token
 
 
 def get_config(con):
@@ -484,32 +547,63 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", tipo)
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("X-Content-Type-Options", "nosniff")
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(data)
 
-    def body(self):
+    def raw(self):
         n = int(self.headers.get("Content-Length") or 0)
-        raw = self.rfile.read(n).decode("utf-8-sig") if n else ""
+        if n > MAX_ARCHIVO:
+            raise ValueError("El archivo pesa más de 15 MB")
+        return self.rfile.read(n) if n else b""
+
+    def body(self):
+        raw = self.raw().decode("utf-8-sig")
         if "json" in (self.headers.get("Content-Type") or ""):
             return json.loads(raw or "{}")
         return raw
 
+    # ---- sesión
+    def usuario(self, con):
+        c = SimpleCookie(self.headers.get("Cookie") or "")
+        token = c["vav"].value if "vav" in c else ""
+        if not token:
+            return None
+        r = con.execute("SELECT u.id, u.nombre, u.usuario, u.admin FROM sesiones s JOIN usuarios u "
+                        "ON u.id = s.usuario_id WHERE s.token = ?", (token,)).fetchone()
+        return dict(r) if r else None
+
+    def cookie(self, token, borrar=False):
+        segura = "; Secure" if self.headers.get("X-Forwarded-Proto") == "https" else ""
+        edad = 0 if borrar else 60 * 60 * 24 * 90
+        return {"Set-Cookie": f"vav={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={edad}{segura}"}
+
+    def estatico(self, p):
+        ruta = os.path.normpath(os.path.join(STATIC, (p.lstrip("/") or "index.html")))
+        if not ruta.startswith(STATIC) or not os.path.isfile(ruta):
+            ruta = os.path.join(STATIC, "index.html")
+        with open(ruta, "rb") as fh:
+            return self.send(200, fh.read(), TIPOS.get(os.path.splitext(ruta)[1], "application/octet-stream"))
+
+    # ---- GET
     def do_GET(self):
         u = urlparse(self.path)
         q = parse_qs(u.query)
         p = u.path
         if not p.startswith("/api/"):
-            ruta = os.path.normpath(os.path.join(STATIC, (p.lstrip("/") or "index.html")))
-            if not ruta.startswith(STATIC) or not os.path.isfile(ruta):
-                ruta = os.path.join(STATIC, "index.html")
-            with open(ruta, "rb") as fh:
-                return self.send(200, fh.read(), TIPOS.get(os.path.splitext(ruta)[1], "application/octet-stream"))
+            return self.estatico(p)
         with db() as con:
+            yo = self.usuario(con)
+            if p == "/api/estado":
+                hay = con.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] > 0
+                return self.send(200, {"hay_usuarios": hay, "usuario": yo})
+            if not yo:
+                return self.send(401, {"error": "Inicia sesión"})
             if p == "/api/inicio":
                 return self.send(200, {"cuartos": rows(con, "SELECT * FROM cuartos ORDER BY id"),
-                                       "categorias": CATEGORIAS, "config": get_config(con)})
+                                       "categorias": CATEGORIAS, "config": get_config(con), "yo": yo})
             if p == "/api/resumen":
                 return self.send(200, resumen(con, *rango(q)))
             if p == "/api/flujo":
@@ -520,9 +614,29 @@ class Handler(BaseHTTPRequestHandler):
                     r["neto"] = neto(r)
                 return self.send(200, lista)
             if p == "/api/gastos":
-                return self.send(200, rows(con, "SELECT * FROM gastos ORDER BY fecha DESC, id DESC LIMIT 500"))
+                lista = rows(con, "SELECT g.*, u.nombre AS registrado_por_nombre FROM gastos g "
+                                  "LEFT JOIN usuarios u ON u.id = g.registrado_por "
+                                  "ORDER BY g.fecha DESC, g.id DESC LIMIT 500")
+                comp = {}
+                for c in rows(con, "SELECT id, gasto_id, nombre_original, tipo FROM comprobantes"):
+                    comp.setdefault(c["gasto_id"], []).append(c)
+                for g in lista:
+                    g["comprobantes"] = comp.get(g["id"], [])
+                return self.send(200, lista)
+            if p.startswith("/api/comprobantes/"):
+                c = con.execute("SELECT * FROM comprobantes WHERE id = ?",
+                                (int(p.rsplit("/", 1)[1]),)).fetchone()
+                ruta = os.path.join(UPLOADS, c["archivo"]) if c else ""
+                if not c or not os.path.isfile(ruta):
+                    return self.send(404, {"error": "No se encontró el comprobante"})
+                with open(ruta, "rb") as fh:
+                    nombre = c["nombre_original"].replace('"', "")
+                    return self.send(200, fh.read(), c["tipo"] or "application/octet-stream",
+                                     {"Content-Disposition": f'inline; filename="{nombre}"'})
             if p == "/api/movimientos":
                 return self.send(200, rows(con, "SELECT * FROM movimientos ORDER BY fecha DESC"))
+            if p == "/api/usuarios":
+                return self.send(200, rows(con, "SELECT id, nombre, usuario, admin FROM usuarios ORDER BY id"))
             if p.startswith("/api/exportar/"):
                 que = p.rsplit("/", 1)[1]
                 d, h = rango(q)
@@ -532,20 +646,63 @@ class Handler(BaseHTTPRequestHandler):
                                  {"Content-Disposition": f'attachment; filename="{nombre}"'})
         self.send(404, {"error": "no encontrado"})
 
+    # ---- POST
     def do_POST(self):
         p = urlparse(self.path).path
         try:
-            datos = self.body()
             with db() as con:
-                if p == "/api/reservas":
-                    campos = ("cuarto_id", "codigo", "huesped", "check_in", "noches", "bruto",
-                              "comision", "impuestos", "fecha_pago", "notas")
-                    vals = [datos.get(c) or None for c in campos]
-                    if datos.get("id"):
-                        con.execute(f"UPDATE reservas SET {', '.join(c + '=?' for c in campos)} WHERE id=?",
-                                    vals + [datos["id"]])
-                    else:
-                        con.execute(f"INSERT INTO reservas ({', '.join(campos)}) VALUES ({','.join('?' * len(campos))})", vals)
+                yo = self.usuario(con)
+                # Subir comprobante: el cuerpo es el archivo tal cual.
+                if p.startswith("/api/gastos/") and p.endswith("/comprobante"):
+                    if not yo:
+                        return self.send(401, {"error": "Inicia sesión"})
+                    gasto_id = int(p.split("/")[3])
+                    if not con.execute("SELECT 1 FROM gastos WHERE id = ?", (gasto_id,)).fetchone():
+                        return self.send(404, {"error": "No existe el gasto"})
+                    tipo = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+                    if tipo not in TIPOS_COMPROBANTE:
+                        return self.send(400, {"error": "Solo fotos (JPG, PNG, HEIC), PDF o XML"})
+                    datos = self.raw()
+                    if not datos:
+                        return self.send(400, {"error": "Archivo vacío"})
+                    os.makedirs(UPLOADS, exist_ok=True)
+                    archivo = f"{gasto_id}_{secrets.token_hex(8)}{TIPOS_COMPROBANTE[tipo]}"
+                    with open(os.path.join(UPLOADS, archivo), "wb") as fh:
+                        fh.write(datos)
+                    con.execute("INSERT INTO comprobantes (gasto_id, archivo, nombre_original, tipo, "
+                                "subido_por, fecha) VALUES (?,?,?,?,?,?)",
+                                (gasto_id, archivo, unquote(self.headers.get("X-Nombre") or archivo)[:200],
+                                 tipo, yo["id"], datetime.now().isoformat()))
+                    return self.send(200, {"ok": True})
+
+                datos = self.body()
+                if p == "/api/login":
+                    r = con.execute("SELECT * FROM usuarios WHERE usuario = ?",
+                                    (norm(datos.get("usuario", "")).replace(" ", ""),)).fetchone()
+                    if not r or not password_ok(datos.get("password", ""), r["hash"]):
+                        return self.send(401, {"error": "Usuario o contraseña incorrectos"})
+                    return self.send(200, {"ok": True}, extra=self.cookie(nueva_sesion(con, r["id"])))
+                if p == "/api/primer-usuario":
+                    if con.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0]:
+                        return self.send(403, {"error": "Ya hay usuarios"})
+                    crear_usuario(con, datos.get("nombre"), datos.get("usuario"), datos.get("password"), True)
+                    uid = con.execute("SELECT id FROM usuarios").fetchone()[0]
+                    con.execute("UPDATE gastos SET registrado_por = ? WHERE registrado_por IS NULL", (uid,))
+                    return self.send(200, {"ok": True}, extra=self.cookie(nueva_sesion(con, uid)))
+                if not yo:
+                    return self.send(401, {"error": "Inicia sesión"})
+                if p == "/api/logout":
+                    c = SimpleCookie(self.headers.get("Cookie") or "")
+                    if "vav" in c:
+                        con.execute("DELETE FROM sesiones WHERE token = ?", (c["vav"].value,))
+                    return self.send(200, {"ok": True}, extra=self.cookie("", borrar=True))
+                if p == "/api/password":
+                    actual = con.execute("SELECT hash FROM usuarios WHERE id = ?", (yo["id"],)).fetchone()[0]
+                    if not password_ok(datos.get("actual", ""), actual):
+                        return self.send(400, {"error": "La contraseña actual no es correcta"})
+                    if len(datos.get("nueva") or "") < 6:
+                        return self.send(400, {"error": "La nueva contraseña necesita 6 caracteres o más"})
+                    con.execute("UPDATE usuarios SET hash = ? WHERE id = ?", (hash_password(datos["nueva"]), yo["id"]))
                     return self.send(200, {"ok": True})
                 if p == "/api/gastos":
                     campos = ("fecha", "monto", "categoria", "cuarto_id", "descripcion",
@@ -555,8 +712,27 @@ class Handler(BaseHTTPRequestHandler):
                     if datos.get("id"):
                         con.execute(f"UPDATE gastos SET {', '.join(c + '=?' for c in campos)} WHERE id=?",
                                     vals + [datos["id"]])
+                        return self.send(200, {"ok": True, "id": int(datos["id"])})
+                    cur = con.execute(f"INSERT INTO gastos ({', '.join(campos)}, registrado_por) "
+                                      f"VALUES ({','.join('?' * (len(campos) + 1))})", vals + [yo["id"]])
+                    return self.send(200, {"ok": True, "id": cur.lastrowid})
+
+                # Lo demás solo lo hace un administrador.
+                if not yo["admin"]:
+                    return self.send(403, {"error": "Solo un administrador puede hacer esto"})
+                if p == "/api/usuarios":
+                    crear_usuario(con, datos.get("nombre"), datos.get("usuario"), datos.get("password"),
+                                  datos.get("admin") in (True, 1, "1", "on"))
+                    return self.send(200, {"ok": True})
+                if p == "/api/reservas":
+                    campos = ("cuarto_id", "codigo", "huesped", "check_in", "noches", "bruto",
+                              "comision", "impuestos", "fecha_pago", "notas")
+                    vals = [datos.get(c) or None for c in campos]
+                    if datos.get("id"):
+                        con.execute(f"UPDATE reservas SET {', '.join(c + '=?' for c in campos)} WHERE id=?",
+                                    vals + [datos["id"]])
                     else:
-                        con.execute(f"INSERT INTO gastos ({', '.join(campos)}) VALUES ({','.join('?' * len(campos))})", vals)
+                        con.execute(f"INSERT INTO reservas ({', '.join(campos)}) VALUES ({','.join('?' * len(campos))})", vals)
                     return self.send(200, {"ok": True})
                 if p == "/api/movimientos":
                     con.execute("INSERT INTO movimientos (fecha, monto, concepto) VALUES (?,?,?)",
@@ -576,17 +752,43 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, importar_airbnb(con, datos))
                 if p == "/api/importar/gastos":
                     return self.send(200, importar_gastos(con, datos))
+        except sqlite3.IntegrityError:
+            return self.send(400, {"error": "Ese nombre de usuario ya existe"})
         except Exception as e:  # noqa: BLE001
             return self.send(400, {"error": str(e)})
         self.send(404, {"error": "no encontrado"})
 
+    # ---- DELETE
     def do_DELETE(self):
         partes = urlparse(self.path).path.strip("/").split("/")
-        if len(partes) == 3 and partes[1] in ("reservas", "gastos", "movimientos"):
-            with db() as con:
-                con.execute(f"DELETE FROM {partes[1]} WHERE id = ?", (int(partes[2]),))
-            return self.send(200, {"ok": True})
-        self.send(404, {"error": "no encontrado"})
+        if len(partes) != 3 or partes[1] not in ("reservas", "gastos", "movimientos", "comprobantes", "usuarios"):
+            return self.send(404, {"error": "no encontrado"})
+        tabla, rid = partes[1], int(partes[2])
+        with db() as con:
+            yo = self.usuario(con)
+            if not yo:
+                return self.send(401, {"error": "Inicia sesión"})
+            # Un socio puede borrar sus propios gastos y comprobantes; lo demás, solo un administrador.
+            if not yo["admin"]:
+                if tabla == "gastos":
+                    dueno = con.execute("SELECT registrado_por FROM gastos WHERE id = ?", (rid,)).fetchone()
+                elif tabla == "comprobantes":
+                    dueno = con.execute("SELECT subido_por FROM comprobantes WHERE id = ?", (rid,)).fetchone()
+                else:
+                    dueno = None
+                if not dueno or dueno[0] != yo["id"]:
+                    return self.send(403, {"error": "Solo puedes borrar lo que tú registraste"})
+            if tabla == "usuarios" and rid == yo["id"]:
+                return self.send(400, {"error": "No puedes borrar tu propio usuario"})
+            if tabla in ("gastos", "comprobantes"):
+                col_id = "gasto_id" if tabla == "gastos" else "id"
+                for c in con.execute(f"SELECT archivo FROM comprobantes WHERE {col_id} = ?", (rid,)).fetchall():
+                    try:
+                        os.remove(os.path.join(UPLOADS, c[0]))
+                    except OSError:
+                        pass
+            con.execute(f"DELETE FROM {tabla} WHERE id = ?", (rid,))
+        self.send(200, {"ok": True})
 
 
 if __name__ == "__main__":
@@ -594,5 +796,6 @@ if __name__ == "__main__":
     if "--demo" in sys.argv:
         with db() as con:
             cargar_demo(con)
+    os.makedirs(UPLOADS, exist_ok=True)
     print(f"Volver a verde corriendo en http://localhost:{PORT}  (Ctrl+C para salir)")
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

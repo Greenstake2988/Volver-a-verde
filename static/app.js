@@ -11,6 +11,7 @@ let INI = { cuartos: [], categorias: [], config: {} };
 async function api(path, opts = {}) {
   const r = await fetch(path, opts);
   const j = await r.json();
+  if (r.status === 401 && !path.startsWith("/api/login")) { mostrarLogin(false); throw new Error(j.error); }
   if (!r.ok) throw new Error(j.error || "Error");
   return j;
 }
@@ -125,11 +126,19 @@ const cargar = {
     const l = (await api("/api/gastos")).filter((g) =>
       filtro === "todos" || (filtro === "negocio" && !g.personal) || (filtro === "personal" && g.personal) || (filtro === "factura" && g.factura));
     const etiquetas = (g) => (g.factura ? '<span class="tag">Factura</span>' : "") + (g.personal ? '<span class="tag gris">No es del negocio</span>' : "") + (g.de_la_cuenta ? "" : '<span class="tag gris">Otra cuenta</span>');
-    $("#tablaGastos").innerHTML = `<tr><th>Fecha</th><th>Categoría</th><th>Cuarto</th><th>Descripción</th><th></th><th class="n">Monto</th><th></th></tr>` +
-      l.map((g) => `<tr class="${g.personal ? "personal" : ""}"><td>${g.fecha}</td><td>${esc(g.categoria)}</td><td>${g.personal ? "—" : esc(cuartoNombre(g.cuarto_id))}</td><td>${esc(g.descripcion)}</td><td>${etiquetas(g)}</td><td class="n">${$m(g.monto)}</td><td><button class="link" data-del="gastos/${g.id}">Borrar</button></td></tr>`).join("");
+    const clips = (g) => g.comprobantes.map((c) => `<a class="clip" href="/api/comprobantes/${c.id}" target="_blank" title="${esc(c.nombre_original)}">📎</a>`).join("") +
+      `<label class="link-subir" title="Agregar comprobante">＋<input type="file" hidden data-subir="${g.id}" accept="image/*,application/pdf,.xml" multiple></label>`;
+    const puedeBorrar = (g) => INI.yo.admin || g.registrado_por === INI.yo.id;
+    $("#tablaGastos").innerHTML = `<tr><th>Fecha</th><th>Categoría</th><th>Cuarto</th><th>Descripción</th><th>Registró</th><th>Comprobante</th><th></th><th class="n">Monto</th><th></th></tr>` +
+      l.map((g) => `<tr class="${g.personal ? "personal" : ""}"><td>${g.fecha}</td><td>${esc(g.categoria)}</td><td>${g.personal ? "—" : esc(cuartoNombre(g.cuarto_id))}</td><td>${esc(g.descripcion)}</td><td>${esc(g.registrado_por_nombre || "")}</td><td>${clips(g)}</td><td>${etiquetas(g)}</td><td class="n">${$m(g.monto)}</td><td>${puedeBorrar(g) ? `<button class="link" data-del="gastos/${g.id}">Borrar</button>` : ""}</td></tr>`).join("");
   },
 
-  ajustes() {
+  async ajustes() {
+    if (INI.yo.admin) {
+      const us = await api("/api/usuarios");
+      $("#tablaUsuarios").innerHTML = `<tr><th>Nombre</th><th>Usuario</th><th>Tipo</th><th></th></tr>` +
+        us.map((u) => `<tr><td>${esc(u.nombre)}</td><td>${esc(u.usuario)}</td><td>${u.admin ? "Administrador" : "Socio"}</td><td>${u.id === INI.yo.id ? "" : `<button class="link" data-del="usuarios/${u.id}">Borrar</button>`}</td></tr>`).join("");
+    }
     $("#formSaldo").saldo_inicial.value = INI.config.saldo_inicial;
     $("#formSaldo").fecha_saldo.value = INI.config.fecha_saldo;
     $("#formCuartos").innerHTML = INI.cuartos.map((c) =>
@@ -141,9 +150,11 @@ const cargar = {
 document.addEventListener("click", async (e) => {
   const d = e.target.dataset?.del;
   if (!d) return;
-  await api(`/api/${d}`, { method: "DELETE" });
+  if (!confirm("¿Seguro que quieres borrarlo?")) return;
+  try { await api(`/api/${d}`, { method: "DELETE" }); } catch (err) { return toast(err.message); }
   toast("Borrado");
-  cargar[d.split("/")[0]]();
+  const t = d.split("/")[0];
+  cargar[t === "usuarios" ? "ajustes" : t]();
 });
 
 function alEnviar(sel, fn) {
@@ -153,13 +164,33 @@ function alEnviar(sel, fn) {
   };
 }
 alEnviar("#formReserva", async (f) => { await post("/api/reservas", formData(f)); f.reset(); toast("Reserva guardada"); cargar.reservas(); });
+async function subirComprobantes(gastoId, files) {
+  for (const file of files) {
+    await api(`/api/gastos/${gastoId}/comprobante`, {
+      method: "POST",
+      headers: { "Content-Type": file.type || (file.name.endsWith(".xml") ? "application/xml" : "application/octet-stream"), "X-Nombre": encodeURIComponent(file.name) },
+      body: file,
+    });
+  }
+}
+document.addEventListener("change", async (e) => {
+  const id = e.target.dataset?.subir;
+  if (!id) return;
+  try { await subirComprobantes(id, e.target.files); toast("Comprobante subido"); } catch (err) { toast(err.message); }
+  cargar.gastos();
+});
 alEnviar("#formGasto", async (f) => {
-  await post("/api/gastos", formData(f));
+  const archivos = [...f.comprobante.files];
+  const datos = formData(f); delete datos.comprobante;
+  const r = await post("/api/gastos", datos);
+  if (archivos.length) await subirComprobantes(r.id, archivos);
   const fch = f.fecha.value; f.reset(); f.fecha.value = fch;
   f.cuarto_id.disabled = false;
   toast("Gasto guardado"); cargar.gastos();
 });
 alEnviar("#formMov", async (f) => { await post("/api/movimientos", formData(f)); f.reset(); toast("Ajuste agregado"); cargar.flujo(); });
+alEnviar("#formUsuario", async (f) => { await post("/api/usuarios", formData(f)); f.reset(); toast("Usuario agregado"); cargar.ajustes(); });
+alEnviar("#formPassword", async (f) => { await post("/api/password", formData(f)); f.reset(); toast("Contraseña cambiada"); });
 alEnviar("#formSaldo", async (f) => { await post("/api/config", formData(f)); await iniciar(); toast("Saldo guardado"); });
 alEnviar("#formCuartos", async (f) => {
   const datos = $$(".fila", f).map((fila) => ({ id: +fila.dataset.id, nombre: $("[name=nombre]", fila).value, anuncio_airbnb: $("[name=anuncio_airbnb]", fila).value }));
@@ -187,9 +218,33 @@ $("#expGastos").onclick = () => descargar("gastos");
 $("#filtroGastos").onchange = () => cargar.gastos();
 $("#formGasto").personal.onchange = (e) => { const c = $("#formGasto").cuarto_id; c.disabled = e.target.checked; if (e.target.checked) c.value = ""; };
 
+// ---------------- sesión
+function mostrarLogin(primerUso) {
+  $("#login").hidden = false;
+  $("#login").classList.toggle("primer-uso", primerUso);
+  $("#formLogin").nombre.required = primerUso;
+  $("#loginAyuda").textContent = primerUso ? "Primera vez: crea tu usuario de administrador." : "Entra con tu usuario.";
+  $("#btnLogin").textContent = primerUso ? "Crear y entrar" : "Entrar";
+}
+$("#formLogin").onsubmit = async (e) => {
+  e.preventDefault();
+  const primer = $("#login").classList.contains("primer-uso");
+  try {
+    await post(primer ? "/api/primer-usuario" : "/api/login", formData(e.target));
+    $("#login").hidden = true; e.target.reset(); $("#loginError").textContent = "";
+    iniciar();
+  } catch (err) { $("#loginError").textContent = err.message; }
+};
+$("#salir").onclick = async () => { await post("/api/logout", {}); location.reload(); };
+
 // ---------------- inicio
 async function iniciar() {
   INI = await api("/api/inicio");
+  $("#quien").textContent = `${INI.yo.nombre}${INI.yo.admin ? " · admin" : ""}`;
+  document.body.classList.toggle("socio", !INI.yo.admin);
+  const activa0 = $("#tabs .activo");
+  if (!INI.yo.admin && (activa0.classList.contains("solo-admin") || !iniciar.listo)) { iniciar.listo = true; return $("[data-tab=gastos]").click(); }
+  iniciar.listo = true;
   $$(".selCuarto").forEach((s) => {
     const general = s.closest("#formGasto") ? '<option value="">General (toda la casa)</option>' : "";
     s.innerHTML = general + INI.cuartos.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join("");
@@ -204,5 +259,5 @@ async function iniciar() {
   $("#formMov").fecha.value = iso(h);
   $("#expDesde").value = iso(new Date(h.getFullYear(), h.getMonth() - 1, 1));
   $("#expHasta").value = iso(new Date(h.getFullYear(), h.getMonth(), 0));
-  iniciar();
+  api("/api/estado").then((e) => (e.usuario ? iniciar() : mostrarLogin(!e.hay_usuarios)));
 })();

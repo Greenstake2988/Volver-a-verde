@@ -12,8 +12,21 @@ python3 app.py          # abre http://localhost:8000 en el navegador
 python3 app.py --demo   # primera vez: carga datos de ejemplo para ver cómo se ve
 ```
 
-Los datos se guardan en `data.db`, en la misma carpeta. Respáldalo de vez en cuando; no se sube a GitHub.
-Para empezar de cero después de probar la demo, borra `data.db`.
+Los datos se guardan en `data.db` y los comprobantes en `uploads/`, en la misma carpeta. Respáldalos de vez en cuando; no se suben a GitHub.
+Para empezar de cero después de probar la demo, borra `data.db` y `uploads/`.
+
+La primera vez que abres la app te pide crear tu usuario de **administrador**. Después, en **Ajustes → Usuarios**, das de alta a cada socio con su propio usuario y contraseña.
+
+## Usuarios
+
+| | Socio | Administrador |
+|---|---|---|
+| Registrar gastos y subir comprobantes (foto, PDF o XML) | ✓ | ✓ |
+| Ver resumen, flujo, reservas y gastos | ✓ | ✓ |
+| Borrar gastos | solo los suyos | todos |
+| Importar CSV, capturar reservas, ajustes, usuarios, reporte del contador | | ✓ |
+
+Desde el celular, el botón de comprobante abre la cámara para tomarle foto al ticket o factura.
 
 ## Pantallas
 
@@ -41,3 +54,49 @@ Guarda la hoja como CSV con estas columnas (la primera fila son los nombres):
 | 18/10/2026 | 800 | Mantenimiento | Llave del baño | Cuarto 3 |
 
 Fechas en formato día/mes/año o año-mes-día. `descripcion` y `cuarto` son opcionales. También puedes agregar las columnas `factura` y `personal` con "si" o "no".
+
+## Ponerla en el servidor Linux
+
+```bash
+sudo git clone https://github.com/Greenstake2988/Volver-a-verde /opt/volver-a-verde
+sudo mkdir -p /opt/volver-a-verde-datos && sudo chown $USER /opt/volver-a-verde-datos
+# Edita User= en deploy/volver-a-verde.service con tu usuario de Linux, y luego:
+sudo cp /opt/volver-a-verde/deploy/volver-a-verde.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now volver-a-verde
+```
+
+Para actualizar: `cd /opt/volver-a-verde && sudo git pull && sudo systemctl restart volver-a-verde`.
+
+### Opción 1: solo en la red de la casa (gratis)
+
+Con `HOST=0.0.0.0` (ya viene en el servicio), desde cualquier celular o compu conectada a la misma WiFi entra a `http://IP-DEL-SERVIDOR:8000`.
+La IP la ves con `hostname -I`. Si tienes firewall: `sudo ufw allow 8000/tcp`.
+
+### Opción 2: desde cualquier lugar con Cloudflare Tunnel (gratis)
+
+Instala `cloudflared` ([instrucciones](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)).
+
+- **Rápido, para probar** (sin cuenta, la dirección cambia cada vez que lo reinicias):
+  ```bash
+  cloudflared tunnel --url http://localhost:8000
+  ```
+  Te imprime una dirección `https://algo.trycloudflare.com` para compartir con los socios.
+
+- **Fijo** (gratis, pero necesitas un dominio en tu cuenta de Cloudflare, ~US$10/año):
+  ```bash
+  cloudflared tunnel login
+  cloudflared tunnel create volver-a-verde
+  cloudflared tunnel route dns volver-a-verde finanzas.tudominio.com
+  cloudflared tunnel run --url http://localhost:8000 volver-a-verde
+  ```
+  Para que arranque solo: `sudo cloudflared service install` (ver la documentación de Cloudflare).
+
+Con el túnel ya no hace falta abrir puertos del módem. Si solo usas el túnel, puedes quitar `HOST=0.0.0.0` del servicio para que la app solo escuche dentro del servidor.
+
+### Respaldos
+
+Copia de vez en cuando la carpeta `/opt/volver-a-verde-datos` (base de datos y comprobantes) a otro disco o a la nube. Por ejemplo, con cron cada noche:
+
+```bash
+0 3 * * * tar czf ~/respaldos/vav-$(date +\%F).tgz -C /opt volver-a-verde-datos
+```

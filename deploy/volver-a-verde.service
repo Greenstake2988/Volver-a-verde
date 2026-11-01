@@ -1,0 +1,22 @@
+# Servicio de systemd para que la app arranque sola con el servidor.
+# Instalar (ajusta User y las rutas si clonaste en otro lado):
+#   sudo cp deploy/volver-a-verde.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now volver-a-verde
+#   journalctl -u volver-a-verde -f      # ver el log
+[Unit]
+Description=Volver a verde (finanzas del Airbnb)
+After=network.target
+
+[Service]
+User=oscar
+WorkingDirectory=/opt/volver-a-verde
+ExecStart=/usr/bin/python3 /opt/volver-a-verde/app.py
+Environment=HOST=0.0.0.0
+Environment=PORT=8000
+Environment=VAV_DB=/opt/volver-a-verde-datos/data.db
+Environment=VAV_UPLOADS=/opt/volver-a-verde-datos/uploads
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

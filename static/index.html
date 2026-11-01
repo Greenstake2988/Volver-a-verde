@@ -7,14 +7,25 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+<div id="login" class="login" hidden>
+  <form id="formLogin" class="card">
+    <h1>Volver a verde</h1>
+    <p class="ayuda" id="loginAyuda">Entra con tu usuario.</p>
+    <label class="bloque primer">Tu nombre <input name="nombre" autocomplete="name"></label>
+    <label class="bloque">Usuario <input name="usuario" autocomplete="username" autocapitalize="none" required></label>
+    <label class="bloque">Contraseña <input type="password" name="password" autocomplete="current-password" required minlength="6"></label>
+    <button id="btnLogin">Entrar</button>
+    <p class="error" id="loginError"></p>
+  </form>
+</div>
 <header>
-  <h1>Volver a verde</h1>
+  <div class="barra-sup"><h1>Volver a verde</h1><span id="quien"></span><button id="salir" class="link claro">Salir</button></div>
   <nav id="tabs">
     <button data-tab="resumen" class="activo">Resumen</button>
     <button data-tab="flujo">Flujo de efectivo</button>
     <button data-tab="reservas">Reservas</button>
     <button data-tab="gastos">Gastos</button>
-    <button data-tab="datos">Importar / Contador</button>
+    <button data-tab="datos" class="solo-admin">Importar / Contador</button>
     <button data-tab="ajustes">Ajustes</button>
   </nav>
 </header>
@@ -63,7 +74,7 @@
       <div id="flujoBarras" class="barras"></div>
       <table id="flujoMeses" class="tabla"></table>
     </div>
-    <div class="card">
+    <div class="card solo-admin">
       <h2>Ajustar con el banco</h2>
       <p class="ayuda">Si el saldo no coincide con tu estado de cuenta (comisiones bancarias, retiros, dinero que metiste), registra aquí la diferencia. Positivo = entró, negativo = salió.</p>
       <form id="formMov" class="fila">
@@ -81,7 +92,7 @@
 
   <!-- RESERVAS -->
   <section id="reservas" class="tab">
-    <div class="card">
+    <div class="card solo-admin">
       <h2>Agregar reserva</h2>
       <p class="ayuda">Lo más fácil es importar el CSV de Airbnb en “Importar / Contador”. Aquí puedes capturar una a mano.</p>
       <form id="formReserva" class="fila">
@@ -113,6 +124,9 @@
         <label class="check"><input type="checkbox" name="factura" value="1"> Tiene factura</label>
         <label class="check"><input type="checkbox" name="personal" value="1"> No es del negocio</label>
         <label class="check"><input type="checkbox" name="de_la_cuenta" value="1" checked> Pagado desde la cuenta del negocio</label>
+        <label class="archivo">📎 Comprobante (foto, PDF o XML)
+          <input type="file" name="comprobante" accept="image/*,application/pdf,.xml" multiple>
+        </label>
         <button>Guardar</button>
       </form>
       <p class="ayuda">“No es del negocio”: el gasto queda registrado y sale en el reporte para el contador, pero no se resta en la utilidad ni en la rentabilidad de los cuartos. Si además lo pagaste desde la cuenta del negocio, sí baja el saldo en el flujo de efectivo. Qué facturas se pueden deducir lo decide el contador.</p>
@@ -162,7 +176,27 @@
 
   <!-- AJUSTES -->
   <section id="ajustes" class="tab">
+    <div class="card solo-admin">
+      <h2>Usuarios</h2>
+      <p class="ayuda">Cada socio entra con su propio usuario. Los socios pueden registrar gastos, subir comprobantes y ver los reportes. Los administradores además importan, capturan reservas y cambian ajustes.</p>
+      <table id="tablaUsuarios" class="tabla"></table>
+      <form id="formUsuario" class="fila" style="margin-top:12px">
+        <input name="nombre" placeholder="Nombre" required>
+        <input name="usuario" placeholder="Usuario" autocapitalize="none" required>
+        <input name="password" type="text" placeholder="Contraseña (6+)" required minlength="6">
+        <label class="check"><input type="checkbox" name="admin" value="1"> Administrador</label>
+        <button>Agregar usuario</button>
+      </form>
+    </div>
     <div class="card">
+      <h2>Mi contraseña</h2>
+      <form id="formPassword" class="fila">
+        <input type="password" name="actual" placeholder="Contraseña actual" required>
+        <input type="password" name="nueva" placeholder="Nueva (6+)" required minlength="6">
+        <button>Cambiar</button>
+      </form>
+    </div>
+    <div class="card solo-admin">
       <h2>Saldo de la cuenta</h2>
       <p class="ayuda">Pon el saldo que tenía la cuenta en una fecha. A partir de ahí la app suma depósitos y resta gastos.</p>
       <form id="formSaldo" class="fila">
@@ -171,7 +205,7 @@
         <button>Guardar</button>
       </form>
     </div>
-    <div class="card">
+    <div class="card solo-admin">
       <h2>Cuartos</h2>
       <p class="ayuda">“Anuncio en Airbnb” es el nombre del anuncio tal como aparece en el CSV; sirve para saber a qué cuarto pertenece cada reserva.</p>
       <form id="formCuartos"></form>
