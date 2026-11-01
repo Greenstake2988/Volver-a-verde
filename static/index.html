@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Volver a verde</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>Volver a verde</h1>
+  <nav id="tabs">
+    <button data-tab="resumen" class="activo">Resumen</button>
+    <button data-tab="flujo">Flujo de efectivo</button>
+    <button data-tab="reservas">Reservas</button>
+    <button data-tab="gastos">Gastos</button>
+    <button data-tab="datos">Importar / Contador</button>
+    <button data-tab="ajustes">Ajustes</button>
+  </nav>
+</header>
+
+<main>
+  <!-- RESUMEN -->
+  <section id="resumen" class="tab activo">
+    <div class="filtros">
+      <label>Periodo
+        <select id="periodo">
+          <option value="mes">Este mes</option>
+          <option value="mes-1">Mes pasado</option>
+          <option value="3m">Últimos 3 meses</option>
+          <option value="anio">Este año</option>
+          <option value="12m">Últimos 12 meses</option>
+          <option value="custom">Personalizado…</option>
+        </select>
+      </label>
+      <label class="custom">Desde <input type="date" id="desde"></label>
+      <label class="custom">Hasta <input type="date" id="hasta"></label>
+    </div>
+    <div id="veredicto" class="veredicto"></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="grid2">
+      <div class="card">
+        <h2>¿De dónde sale la utilidad?</h2>
+        <table id="cascada" class="tabla"></table>
+      </div>
+      <div class="card">
+        <h2>Gastos por categoría</h2>
+        <div id="categorias"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Rentabilidad por cuarto</h2>
+      <p class="ayuda">Los gastos generales (luz, agua, limpieza…) se reparten igual entre los cuartos. Los gastos marcados con un cuarto se le cargan solo a ese cuarto.</p>
+      <table id="cuartosTabla" class="tabla"></table>
+    </div>
+  </section>
+
+  <!-- FLUJO -->
+  <section id="flujo" class="tab">
+    <div class="kpis" id="flujoKpis"></div>
+    <div class="card">
+      <h2>Entradas y salidas por mes</h2>
+      <div id="flujoBarras" class="barras"></div>
+      <table id="flujoMeses" class="tabla"></table>
+    </div>
+    <div class="card">
+      <h2>Ajustar con el banco</h2>
+      <p class="ayuda">Si el saldo no coincide con tu estado de cuenta (comisiones bancarias, retiros, dinero que metiste), registra aquí la diferencia. Positivo = entró, negativo = salió.</p>
+      <form id="formMov" class="fila">
+        <input type="date" name="fecha" required>
+        <input type="number" step="0.01" name="monto" placeholder="Monto (+/−)" required>
+        <input name="concepto" placeholder="Concepto">
+        <button>Agregar</button>
+      </form>
+    </div>
+    <div class="card">
+      <h2>Movimientos</h2>
+      <table id="flujoMovs" class="tabla"></table>
+    </div>
+  </section>
+
+  <!-- RESERVAS -->
+  <section id="reservas" class="tab">
+    <div class="card">
+      <h2>Agregar reserva</h2>
+      <p class="ayuda">Lo más fácil es importar el CSV de Airbnb en “Importar / Contador”. Aquí puedes capturar una a mano.</p>
+      <form id="formReserva" class="fila">
+        <select name="cuarto_id" class="selCuarto" required></select>
+        <input name="huesped" placeholder="Huésped">
+        <label>Check-in <input type="date" name="check_in" required></label>
+        <input type="number" name="noches" min="1" placeholder="Noches" required>
+        <input type="number" step="0.01" name="bruto" placeholder="Total cobrado" required>
+        <input type="number" step="0.01" name="comision" placeholder="Comisión Airbnb">
+        <input type="number" step="0.01" name="impuestos" placeholder="Impuestos retenidos">
+        <label>Pago <input type="date" name="fecha_pago"></label>
+        <input name="codigo" placeholder="Código">
+        <button>Guardar</button>
+      </form>
+    </div>
+    <div class="card"><table id="tablaReservas" class="tabla"></table></div>
+  </section>
+
+  <!-- GASTOS -->
+  <section id="gastos" class="tab">
+    <div class="card">
+      <h2>Agregar gasto</h2>
+      <form id="formGasto" class="fila">
+        <input type="date" name="fecha" required>
+        <input type="number" step="0.01" name="monto" placeholder="Monto" required>
+        <select name="categoria" id="selCategoria" required></select>
+        <select name="cuarto_id" class="selCuarto"><option value="">General (toda la casa)</option></select>
+        <input name="descripcion" placeholder="Descripción">
+        <button>Guardar</button>
+      </form>
+    </div>
+    <div class="card"><table id="tablaGastos" class="tabla"></table></div>
+  </section>
+
+  <!-- IMPORTAR / CONTADOR -->
+  <section id="datos" class="tab">
+    <div class="grid2">
+      <div class="card">
+        <h2>Importar reservas de Airbnb</h2>
+        <p class="ayuda">En Airbnb: <b>Menú → Ganancias → Historial de transacciones → Descargar CSV</b>. Puedes subirlo varias veces; las reservas repetidas se actualizan, no se duplican.</p>
+        <input type="file" id="fileAirbnb" accept=".csv">
+        <p id="resAirbnb" class="resultado"></p>
+      </div>
+      <div class="card">
+        <h2>Importar gastos desde Excel</h2>
+        <p class="ayuda">En Excel: <b>Archivo → Guardar como → CSV</b>. Columnas: <code>fecha, monto, categoria, descripcion, cuarto</code> (las dos últimas son opcionales).</p>
+        <input type="file" id="fileGastos" accept=".csv">
+        <p id="resGastos" class="resultado"></p>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Reporte para el contador</h2>
+      <p class="ayuda">Descarga las reservas (con comisiones e impuestos retenidos) y los gastos del periodo. Se abren directo en Excel.</p>
+      <div class="fila">
+        <label>Desde <input type="date" id="expDesde"></label>
+        <label>Hasta <input type="date" id="expHasta"></label>
+        <button id="expReservas">Descargar reservas</button>
+        <button id="expGastos">Descargar gastos</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- AJUSTES -->
+  <section id="ajustes" class="tab">
+    <div class="card">
+      <h2>Saldo de la cuenta</h2>
+      <p class="ayuda">Pon el saldo que tenía la cuenta en una fecha. A partir de ahí la app suma depósitos y resta gastos.</p>
+      <form id="formSaldo" class="fila">
+        <label>Saldo <input type="number" step="0.01" name="saldo_inicial" required></label>
+        <label>al día <input type="date" name="fecha_saldo" required></label>
+        <button>Guardar</button>
+      </form>
+    </div>
+    <div class="card">
+      <h2>Cuartos</h2>
+      <p class="ayuda">“Anuncio en Airbnb” es el nombre del anuncio tal como aparece en el CSV; sirve para saber a qué cuarto pertenece cada reserva.</p>
+      <form id="formCuartos"></form>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+<script src="/app.js"></script>
+</body>
+</html>
