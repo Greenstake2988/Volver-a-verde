@@ -50,3 +50,7 @@ button.link { background: none; border: 0; color: var(--rojo); padding: 2px 6px;
 #formCuartos .fila input { width: 240px; }
 #toast { position: fixed; bottom: 20px; right: 20px; background: var(--texto); color: #fff; padding: 10px 16px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
 #toast.on { opacity: 1; }
+.tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--verde-claro); color: var(--verde); margin-right: 4px; white-space: nowrap; }
+.tag.gris { background: #eceeec; color: var(--suave); }
+.tabla tr.personal td { color: var(--suave); }
+label.check { color: var(--texto); }

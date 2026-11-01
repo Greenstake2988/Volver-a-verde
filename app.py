@@ -55,7 +55,10 @@ CREATE TABLE IF NOT EXISTS gastos (
     monto REAL NOT NULL,
     categoria TEXT NOT NULL,
     cuarto_id INTEGER REFERENCES cuartos(id),
-    descripcion TEXT DEFAULT ''
+    descripcion TEXT DEFAULT '',
+    personal INTEGER NOT NULL DEFAULT 0,      -- 1 = no es del negocio: no cuenta en la rentabilidad
+    factura INTEGER NOT NULL DEFAULT 0,       -- 1 = tiene factura (CFDI)
+    de_la_cuenta INTEGER NOT NULL DEFAULT 1   -- 1 = se pagó desde la cuenta del negocio
 );
 CREATE TABLE IF NOT EXISTS movimientos (
     id INTEGER PRIMARY KEY,
@@ -82,6 +85,11 @@ def db():
 def init_db():
     with db() as con:
         con.executescript(SCHEMA)
+        # Migración para bases creadas antes de estas columnas.
+        cols = {r["name"] for r in con.execute("PRAGMA table_info(gastos)")}
+        for c, d in (("personal", 0), ("factura", 0), ("de_la_cuenta", 1)):
+            if c not in cols:
+                con.execute(f"ALTER TABLE gastos ADD COLUMN {c} INTEGER NOT NULL DEFAULT {d}")
         if con.execute("SELECT COUNT(*) FROM cuartos").fetchone()[0] == 0:
             con.executemany("INSERT INTO cuartos (nombre) VALUES (?)",
                             [(f"Cuarto {i}",) for i in range(1, 6)])
@@ -121,8 +129,10 @@ def resumen(con, desde, hasta):
     n_cuartos = len(cuartos) or 1
     dias = (hasta - desde).days + 1
     reservas = rows(con, "SELECT * FROM reservas")
-    gastos = rows(con, "SELECT * FROM gastos WHERE fecha BETWEEN ? AND ?",
+    gastos = rows(con, "SELECT * FROM gastos WHERE personal = 0 AND fecha BETWEEN ? AND ?",
                   (desde.isoformat(), hasta.isoformat()))
+    personales = con.execute("SELECT COALESCE(SUM(monto), 0) FROM gastos WHERE personal = 1 "
+                             "AND fecha BETWEEN ? AND ?", (desde.isoformat(), hasta.isoformat())).fetchone()[0]
 
     por_cuarto = {c["id"]: {"id": c["id"], "nombre": c["nombre"], "noches": 0,
                             "bruto": 0.0, "neto": 0.0, "gastos_directos": 0.0,
@@ -172,6 +182,7 @@ def resumen(con, desde, hasta):
         "totales": {
             **{k: round(v, 2) for k, v in tot.items()},
             "gastos": round(total_gastos, 2),
+            "gastos_personales": round(personales, 2),
             "utilidad": round(utilidad, 2),
             "margen": utilidad / tot["neto"] if tot["neto"] else 0,
             "ocupacion": tot["noches"] / disponibles if disponibles else 0,
@@ -198,9 +209,10 @@ def flujo(con):
         f = r["fecha_pago"] or (parse_d(r["check_in"]) + timedelta(days=1)).isoformat()
         movs.append({"fecha": f, "monto": neto(r), "tipo": "entrada",
                      "concepto": f"Airbnb {r['codigo'] or ''} {r['cuarto'] or ''} {r['huesped'] or ''}".strip()})
-    for g in rows(con, "SELECT * FROM gastos"):
+    for g in rows(con, "SELECT * FROM gastos WHERE de_la_cuenta = 1"):
+        etiqueta = " (no es del negocio)" if g["personal"] else ""
         movs.append({"fecha": g["fecha"], "monto": -g["monto"], "tipo": "salida",
-                     "concepto": f"{g['categoria']}: {g['descripcion'] or ''}".strip(": ")})
+                     "concepto": f"{g['categoria']}: {g['descripcion'] or ''}".strip(": ") + etiqueta})
     for m in rows(con, "SELECT * FROM movimientos"):
         movs.append({"fecha": m["fecha"], "monto": m["monto"],
                      "tipo": "entrada" if m["monto"] >= 0 else "salida",
@@ -345,7 +357,8 @@ def importar_airbnb(con, texto):
 
 
 def importar_gastos(con, texto):
-    """CSV con columnas: fecha, monto, categoria, descripcion, cuarto (las dos últimas opcionales)."""
+    """CSV con columnas: fecha, monto, categoria y opcionales descripcion, cuarto, factura,
+    personal, de la cuenta (estas tres con "si"/"no")."""
     cuartos = {norm(c["nombre"]): c["id"] for c in rows(con, "SELECT * FROM cuartos")}
     cats = {norm(c): c for c in CATEGORIAS}
     n = errores = 0
@@ -358,8 +371,15 @@ def importar_gastos(con, texto):
         cat = col(f, "categoria", "tipo", "concepto")
         cat = cats.get(norm(cat), cat.strip().capitalize() or "Otros")
         cuarto = cuartos.get(norm(col(f, "cuarto", "habitacion")))
-        con.execute("INSERT INTO gastos (fecha, monto, categoria, cuarto_id, descripcion) VALUES (?,?,?,?,?)",
-                    (fch, monto, cat, cuarto, col(f, "descripcion", "nota", "notas", "detalle")))
+        si = lambda v: norm(v) in ("si", "s", "x", "1", "yes", "true")
+        personal = si(col(f, "personal", "no es del negocio"))
+        factura = si(col(f, "factura", "facturado", "cfdi"))
+        cuenta = col(f, "de la cuenta", "cuenta del negocio")
+        de_la_cuenta = si(cuenta) if cuenta else 1
+        con.execute("INSERT INTO gastos (fecha, monto, categoria, cuarto_id, descripcion, personal, factura, "
+                    "de_la_cuenta) VALUES (?,?,?,?,?,?,?,?)",
+                    (fch, monto, cat, cuarto, col(f, "descripcion", "nota", "notas", "detalle"),
+                     int(personal), int(factura), int(de_la_cuenta)))
         n += 1
     return {"importados": n, "omitidos": errores}
 
@@ -379,12 +399,14 @@ def exportar(con, que, desde, hasta):
                         f"{r['bruto']:.2f}", f"{r['comision']:.2f}", f"{r['impuestos']:.2f}",
                         f"{neto(r):.2f}", r["fecha_pago"] or ""])
     else:
-        w.writerow(["Fecha", "Categoría", "Cuarto", "Descripción", "Monto"])
+        w.writerow(["Fecha", "Categoría", "Cuarto", "Descripción", "Monto", "Tiene factura",
+                    "Del negocio", "Pagado desde la cuenta del negocio"])
         for g in rows(con, "SELECT g.*, c.nombre AS cuarto FROM gastos g LEFT JOIN cuartos c "
                            "ON c.id = g.cuarto_id WHERE fecha BETWEEN ? AND ? ORDER BY fecha",
                       (desde, hasta)):
-            w.writerow([g["fecha"], g["categoria"], g["cuarto"] or "General", g["descripcion"],
-                        f"{g['monto']:.2f}"])
+            w.writerow([g["fecha"], g["categoria"], "" if g["personal"] else (g["cuarto"] or "General"), g["descripcion"],
+                        f"{g['monto']:.2f}", "Sí" if g["factura"] else "No",
+                        "No" if g["personal"] else "Sí", "Sí" if g["de_la_cuenta"] else "No"])
     return "﻿" + out.getvalue()  # BOM para que Excel lea bien los acentos
 
 
@@ -526,13 +548,15 @@ class Handler(BaseHTTPRequestHandler):
                         con.execute(f"INSERT INTO reservas ({', '.join(campos)}) VALUES ({','.join('?' * len(campos))})", vals)
                     return self.send(200, {"ok": True})
                 if p == "/api/gastos":
-                    campos = ("fecha", "monto", "categoria", "cuarto_id", "descripcion")
-                    vals = [datos.get(c) or None for c in campos]
+                    campos = ("fecha", "monto", "categoria", "cuarto_id", "descripcion",
+                              "personal", "factura", "de_la_cuenta")
+                    vals = [datos.get(c) or None for c in campos[:5]] + [
+                        1 if datos.get(c) in (True, 1, "1", "on") else 0 for c in campos[5:]]
                     if datos.get("id"):
                         con.execute(f"UPDATE gastos SET {', '.join(c + '=?' for c in campos)} WHERE id=?",
                                     vals + [datos["id"]])
                     else:
-                        con.execute(f"INSERT INTO gastos ({', '.join(campos)}) VALUES (?,?,?,?,?)", vals)
+                        con.execute(f"INSERT INTO gastos ({', '.join(campos)}) VALUES ({','.join('?' * len(campos))})", vals)
                     return self.send(200, {"ok": True})
                 if p == "/api/movimientos":
                     con.execute("INSERT INTO movimientos (fecha, monto, concepto) VALUES (?,?,?)",

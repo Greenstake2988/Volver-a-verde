@@ -19,7 +19,7 @@ Para empezar de cero después de probar la demo, borra `data.db`.
 
 - **Resumen**: utilidad neta, ocupación, tarifa promedio, de dónde sale la utilidad (cobrado → comisión → impuestos retenidos → depositado → gastos), gastos por categoría y rentabilidad por cuarto, con conclusiones en lenguaje simple.
 - **Flujo de efectivo**: saldo actual de la cuenta, entradas y salidas por mes y lista de movimientos. Se puede registrar un ajuste cuando no cuadre con el banco.
-- **Reservas** y **Gastos**: captura a mano.
+- **Reservas** y **Gastos**: captura a mano. Cada gasto se puede marcar como *tiene factura*, *no es del negocio* y *pagado desde la cuenta del negocio*. Los que no son del negocio salen en el reporte del contador, pero no se restan en la utilidad ni en la rentabilidad de los cuartos; solo bajan el saldo si se pagaron desde la cuenta del negocio.
 - **Importar / Contador**: importa el CSV de Airbnb (Ganancias → Historial de transacciones) y el CSV de gastos de Excel; descarga reservas y gastos del periodo para el contador.
 - **Ajustes**: saldo inicial de la cuenta y nombres de los cuartos / anuncios de Airbnb.
 
@@ -40,4 +40,4 @@ Guarda la hoja como CSV con estas columnas (la primera fila son los nombres):
 | 05/10/2026 | 1450 | Luz | CFE | |
 | 18/10/2026 | 800 | Mantenimiento | Llave del baño | Cuarto 3 |
 
-Fechas en formato día/mes/año o año-mes-día. `descripcion` y `cuarto` son opcionales.
+Fechas en formato día/mes/año o año-mes-día. `descripcion` y `cuarto` son opcionales. También puedes agregar las columnas `factura` y `personal` con "si" o "no".

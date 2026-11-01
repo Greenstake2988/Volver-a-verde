@@ -79,7 +79,7 @@ const cargar = {
     $("#kpis").innerHTML =
       kpi("Utilidad neta", $m(t.utilidad), `margen ${pct(t.margen)}`, t.utilidad >= 0 ? "pos" : "neg") +
       kpi("Depositado por Airbnb", $m(t.neto), `${t.reservas} reservas`) +
-      kpi("Gastos", $m(t.gastos)) +
+      kpi("Gastos del negocio", $m(t.gastos), t.gastos_personales ? `+ ${$m(t.gastos_personales)} que no son del negocio (no cuentan)` : "") +
       kpi("Ocupación", pct(t.ocupacion), `${t.noches} de ${r.dias * INI.cuartos.length} noches`) +
       kpi("Tarifa promedio", $m(t.tarifa_promedio), "por noche (bruto)");
     $("#cascada").innerHTML = `
@@ -121,9 +121,12 @@ const cargar = {
   },
 
   async gastos() {
-    const l = await api("/api/gastos");
-    $("#tablaGastos").innerHTML = `<tr><th>Fecha</th><th>Categoría</th><th>Cuarto</th><th>Descripción</th><th class="n">Monto</th><th></th></tr>` +
-      l.map((g) => `<tr><td>${g.fecha}</td><td>${esc(g.categoria)}</td><td>${esc(cuartoNombre(g.cuarto_id))}</td><td>${esc(g.descripcion)}</td><td class="n">${$m(g.monto)}</td><td><button class="link" data-del="gastos/${g.id}">Borrar</button></td></tr>`).join("");
+    const filtro = $("#filtroGastos").value;
+    const l = (await api("/api/gastos")).filter((g) =>
+      filtro === "todos" || (filtro === "negocio" && !g.personal) || (filtro === "personal" && g.personal) || (filtro === "factura" && g.factura));
+    const etiquetas = (g) => (g.factura ? '<span class="tag">Factura</span>' : "") + (g.personal ? '<span class="tag gris">No es del negocio</span>' : "") + (g.de_la_cuenta ? "" : '<span class="tag gris">Otra cuenta</span>');
+    $("#tablaGastos").innerHTML = `<tr><th>Fecha</th><th>Categoría</th><th>Cuarto</th><th>Descripción</th><th></th><th class="n">Monto</th><th></th></tr>` +
+      l.map((g) => `<tr class="${g.personal ? "personal" : ""}"><td>${g.fecha}</td><td>${esc(g.categoria)}</td><td>${g.personal ? "—" : esc(cuartoNombre(g.cuarto_id))}</td><td>${esc(g.descripcion)}</td><td>${etiquetas(g)}</td><td class="n">${$m(g.monto)}</td><td><button class="link" data-del="gastos/${g.id}">Borrar</button></td></tr>`).join("");
   },
 
   ajustes() {
@@ -153,6 +156,7 @@ alEnviar("#formReserva", async (f) => { await post("/api/reservas", formData(f))
 alEnviar("#formGasto", async (f) => {
   await post("/api/gastos", formData(f));
   const fch = f.fecha.value; f.reset(); f.fecha.value = fch;
+  f.cuarto_id.disabled = false;
   toast("Gasto guardado"); cargar.gastos();
 });
 alEnviar("#formMov", async (f) => { await post("/api/movimientos", formData(f)); f.reset(); toast("Ajuste agregado"); cargar.flujo(); });
@@ -180,6 +184,8 @@ subir($("#fileGastos"), "/api/importar/gastos", "#resGastos", (r) => `Listo: ${r
 const descargar = (que) => { location.href = `/api/exportar/${que}?desde=${$("#expDesde").value}&hasta=${$("#expHasta").value}`; };
 $("#expReservas").onclick = () => descargar("reservas");
 $("#expGastos").onclick = () => descargar("gastos");
+$("#filtroGastos").onchange = () => cargar.gastos();
+$("#formGasto").personal.onchange = (e) => { const c = $("#formGasto").cuarto_id; c.disabled = e.target.checked; if (e.target.checked) c.value = ""; };
 
 // ---------------- inicio
 async function iniciar() {

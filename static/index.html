@@ -110,10 +110,26 @@
         <select name="categoria" id="selCategoria" required></select>
         <select name="cuarto_id" class="selCuarto"><option value="">General (toda la casa)</option></select>
         <input name="descripcion" placeholder="Descripción">
+        <label class="check"><input type="checkbox" name="factura" value="1"> Tiene factura</label>
+        <label class="check"><input type="checkbox" name="personal" value="1"> No es del negocio</label>
+        <label class="check"><input type="checkbox" name="de_la_cuenta" value="1" checked> Pagado desde la cuenta del negocio</label>
         <button>Guardar</button>
       </form>
+      <p class="ayuda">“No es del negocio”: el gasto queda registrado y sale en el reporte para el contador, pero no se resta en la utilidad ni en la rentabilidad de los cuartos. Si además lo pagaste desde la cuenta del negocio, sí baja el saldo en el flujo de efectivo. Qué facturas se pueden deducir lo decide el contador.</p>
     </div>
-    <div class="card"><table id="tablaGastos" class="tabla"></table></div>
+    <div class="card">
+      <div class="fila">
+        <label>Mostrar
+          <select id="filtroGastos">
+            <option value="todos">Todos</option>
+            <option value="negocio">Solo del negocio</option>
+            <option value="personal">Solo los que no son del negocio</option>
+            <option value="factura">Solo con factura</option>
+          </select>
+        </label>
+      </div>
+      <table id="tablaGastos" class="tabla"></table>
+    </div>
   </section>
 
   <!-- IMPORTAR / CONTADOR -->
@@ -127,7 +143,7 @@
       </div>
       <div class="card">
         <h2>Importar gastos desde Excel</h2>
-        <p class="ayuda">En Excel: <b>Archivo → Guardar como → CSV</b>. Columnas: <code>fecha, monto, categoria, descripcion, cuarto</code> (las dos últimas son opcionales).</p>
+        <p class="ayuda">En Excel: <b>Archivo → Guardar como → CSV</b>. Columnas: <code>fecha, monto, categoria</code> y opcionales <code>descripcion, cuarto, factura, personal</code> (las dos últimas con “si” o “no”).</p>
         <input type="file" id="fileGastos" accept=".csv">
         <p id="resGastos" class="resultado"></p>
       </div>
