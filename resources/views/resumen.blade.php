@@ -34,8 +34,9 @@
     <h2>¿De dónde sale la utilidad?</h2>
     <table class="tabla">
       <tr><td>Lo que pagaron los huéspedes</td><td class="n">{{ dinero($t['bruto']) }}</td></tr>
+      @if ($t['iva_trasladado'])<tr><td>+ IVA que pagaron los huéspedes</td><td class="n">{{ dinero($t['iva_trasladado']) }}</td></tr>@endif
       <tr><td>− Comisión de Airbnb</td><td class="n neg">{{ dinero(-$t['comision']) }}</td></tr>
-      <tr><td>− Impuestos retenidos por Airbnb</td><td class="n neg">{{ dinero(-$t['impuestos']) }}</td></tr>
+      <tr><td>− Retenciones de IVA e ISR</td><td class="n neg">{{ dinero(-$t['impuestos']) }}</td></tr>
       <tr class="total"><td>= Depositado</td><td class="n">{{ dinero($t['neto']) }}</td></tr>
       <tr><td>− Gastos de operación</td><td class="n neg">{{ dinero(-$t['gastos']) }}</td></tr>
       <tr class="total"><td>= Utilidad neta</td><td class="n {{ $t['utilidad'] >= 0 ? 'pos' : 'neg' }}">{{ dinero($t['utilidad']) }}</td></tr>

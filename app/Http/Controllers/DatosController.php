@@ -25,8 +25,15 @@ class DatosController extends Controller
     {
         $request->validate(['archivo' => 'required|file|max:10240|mimes:csv,txt']);
         $r = $importador->airbnb($request->file('archivo')->get());
+        $msg = "Listo: {$r['nuevas']} reservas nuevas, {$r['actualizadas']} actualizadas y {$r['depositos']} depósitos nuevos ({$r['filas']} renglones leídos).";
+        if ($r['total_depositos'] && abs($r['total_neto'] - $r['total_depositos']) > 1) {
+            $msg .= ' Ojo: las reservas suman '.dinero($r['total_neto']).' y los depósitos '.dinero($r['total_depositos']).'.';
+        }
+        if ($r['omitidas']) {
+            $msg .= " {$r['omitidas']} renglones sin fecha de inicio no se importaron.";
+        }
 
-        return back()->with('ok', "Listo: {$r['nuevas']} reservas nuevas y {$r['actualizadas']} actualizadas ({$r['filas']} filas leídas).");
+        return back()->with('ok', $msg);
     }
 
     public function importarGastos(Request $request, Importador $importador)
@@ -48,13 +55,17 @@ class DatosController extends Controller
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");   // BOM para que Excel lea bien los acentos
             if ($tipo === 'reservas') {
-                fputcsv($out, ['Código', 'Cuarto', 'Huésped', 'Check-in', 'Noches', 'Ingreso bruto',
-                    'Comisión Airbnb', 'Impuestos retenidos', 'Neto depositado', 'Fecha de pago'], ',', '"', '');
+                fputcsv($out, ['Código', 'Cuarto', 'Huésped', 'Check-in', 'Salida', 'Noches', 'Ingreso bruto (sin IVA)',
+                    'IVA trasladado', 'Comisión Airbnb', 'Retención IVA', 'Retención ISR', 'Neto depositado',
+                    'ISH pagado por Airbnb', 'Fecha de pago'], ',', '"', '');
                 Reserva::with('cuarto')->whereBetween('check_in', [$datos['desde'], $datos['hasta']])
                     ->orderBy('check_in')->each(function (Reserva $r) use ($out) {
+                        // Capturadas a mano: la retención total va en "Retención IVA" si no hay desglose.
+                        $retIva = $r->retencion_iva || $r->retencion_isr ? $r->retencion_iva : $r->impuestos;
                         fputcsv($out, [$r->codigo, $r->cuarto->nombre ?? '', $r->huesped, $r->check_in->toDateString(),
-                            $r->noches, self::n($r->bruto), self::n($r->comision), self::n($r->impuestos),
-                            self::n($r->neto), $r->fecha_pago?->toDateString()], ',', '"', '');
+                            $r->fecha_salida?->toDateString(), $r->noches, self::n($r->bruto), self::n($r->iva_trasladado),
+                            self::n($r->comision), self::n($retIva), self::n($r->retencion_isr), self::n($r->neto),
+                            self::n($r->ish), $r->fecha_pago?->toDateString()], ',', '"', '');
                     });
             } else {
                 fputcsv($out, ['Fecha', 'Categoría', 'Cuarto', 'Descripción', 'Monto', 'Tiene factura',

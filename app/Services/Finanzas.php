@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Cuarto;
 use App\Models\Cuenta;
+use App\Models\Deposito;
 use App\Models\Gasto;
 use App\Models\Movimiento;
 use App\Models\Reserva;
@@ -34,7 +35,7 @@ class Finanzas
             $porCuarto[$c->id] = ['id' => $c->id, 'nombre' => $c->nombre, 'noches' => 0, 'reservas' => 0,
                 'bruto' => 0.0, 'neto' => 0.0, 'gastos_directos' => 0.0, 'gastos_generales' => 0.0];
         }
-        $tot = ['bruto' => 0.0, 'comision' => 0.0, 'impuestos' => 0.0, 'neto' => 0.0, 'noches' => 0, 'reservas' => 0];
+        $tot = ['bruto' => 0.0, 'iva_trasladado' => 0.0, 'comision' => 0.0, 'impuestos' => 0.0, 'neto' => 0.0, 'noches' => 0, 'reservas' => 0];
 
         // Solo reservas que pueden tocar el periodo (las de hasta 1 año antes por estancias largas).
         $reservas = Reserva::whereBetween('check_in', [$desde->subYear()->toDateString(), $hasta->toDateString()])->get();
@@ -48,6 +49,7 @@ class Finanzas
             $tot['reservas']++;
             $tot['bruto'] += $r->bruto * $f;
             $tot['comision'] += $r->comision * $f;
+            $tot['iva_trasladado'] += $r->iva_trasladado * $f;
             $tot['impuestos'] += $r->impuestos * $f;
             $tot['neto'] += $r->neto * $f;
             if (isset($porCuarto[$r->cuarto_id])) {
@@ -160,7 +162,12 @@ class Finanzas
 
         // Cada renglón: fecha, cuenta, monto (+ entra / − sale) y si es interno (entre cuentas propias).
         $lineas = collect();
-        foreach (Reserva::with('cuarto')->get() as $r) {
+        // Reservas importadas de Airbnb: entran por sus depósitos reales (Payout). Las capturadas a mano, por su fecha de pago.
+        foreach (Deposito::all() as $d) {
+            $lineas->push(['fecha' => $d->fecha->toDateString(), 'cuenta_id' => $airbnb?->id, 'monto' => $d->monto,
+                'interno' => false, 'concepto' => 'Depósito de Airbnb']);
+        }
+        foreach (Reserva::with('cuarto')->where('origen', '!=', 'airbnb')->get() as $r) {
             $fecha = ($r->fecha_pago ?? CarbonImmutable::parse($r->check_in)->addDay())->toDateString();
             $lineas->push(['fecha' => $fecha, 'cuenta_id' => $airbnb?->id, 'monto' => $r->neto, 'interno' => false,
                 'concepto' => trim("Airbnb {$r->codigo} ".($r->cuarto->nombre ?? '')." {$r->huesped}")]);

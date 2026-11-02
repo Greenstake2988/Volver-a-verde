@@ -31,6 +31,15 @@ Hecha con **Laravel 13** (PHP 8.3) y SQLite. Las vistas son Blade con CSS propio
 - **Disponible real** = débito − deuda de tarjetas − lo que se debe a socios.
 - Una compra con tarjeta cuenta como gasto y como salida el día que se hizo; pagar la tarjeta no vuelve a contar.
 
+### Importar de Airbnb
+
+En airbnb.mx (en la computadora): **Menú → Ganancias → Crear informe → Historial de transacciones → CSV**. El importador:
+
+- Junta todos los renglones de cada reserva (por código de confirmación): la reservación, el **IVA que pagó el huésped**, las **retenciones de IVA e ISR**, cancelaciones (*Ajuste*) y cobros o ajustes de resoluciones. Lo que queda es exactamente lo que Airbnb depositó por esa reserva.
+- Guarda los **depósitos reales** (renglones *Payout*) con su fecha estimada de llegada al banco; el flujo de efectivo usa esos depósitos.
+- Asigna cada anuncio "Volver a Verde N" al Cuarto N la primera vez (después se pueden renombrar los cuartos).
+- Se puede subir el mismo archivo o uno que se empalme: las reservas se actualizan y los depósitos no se duplican.
+
 El código de los cálculos está en `app/Services/Finanzas.php` y la importación en `app/Services/Importador.php`.
 
 ## Desarrollo
@@ -39,7 +48,8 @@ El código de los cálculos está en `app/Services/Finanzas.php` y la importaci�
 composer install
 cp .env.example .env && php artisan key:generate
 touch database/database.sqlite && php artisan migrate
-php artisan db:seed --class=DemoSeeder   # opcional: datos inventados para ver cómo se ve
+php artisan db:seed --class=DemoSeeder        # opcional: reservas y gastos inventados
+php artisan db:seed --class=GastosDemoSeeder  # opcional: solo gastos inventados, para usar con reservas reales
 php artisan serve                        # http://localhost:8000
 php artisan test                         # pruebas de cálculos, importación y permisos
 ```
