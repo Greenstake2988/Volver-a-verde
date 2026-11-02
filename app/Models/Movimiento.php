@@ -11,11 +11,16 @@ class Movimiento extends Model
 {
     protected $table = 'movimientos';
 
-    protected $fillable = ['cuenta_id', 'fecha', 'monto', 'concepto'];
+    protected $fillable = ['cuenta_id', 'fecha', 'monto', 'concepto', 'user_id'];   // user_id: pago de un socio
 
     protected function casts(): array
     {
         return ['fecha' => Fecha::class, 'monto' => 'float'];
+    }
+
+    public function usuario(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     public function cuenta(): BelongsTo

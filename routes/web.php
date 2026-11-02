@@ -42,12 +42,14 @@ Route::middleware('auth')->group(function () {
         Route::get('/datos/exportar/{tipo}', [DatosController::class, 'exportar'])->name('datos.exportar');
         Route::post('/transferencias', [PanelController::class, 'guardarTransferencia'])->name('transferencias.store');
         Route::post('/reembolsos', [PanelController::class, 'guardarReembolso'])->name('reembolsos.store');
+        Route::post('/abonos', [PanelController::class, 'guardarAbono'])->name('abonos.store');
         Route::post('/ajustes/cuentas', [AjustesController::class, 'cuentas'])->name('ajustes.cuentas');
         Route::post('/ajustes/cuentas/nueva', [AjustesController::class, 'crearCuenta'])->name('ajustes.cuentas.store');
         Route::post('/ajustes/cuartos', [AjustesController::class, 'cuartos'])->name('ajustes.cuartos');
         Route::post('/ajustes/cuartos/nuevo', [AjustesController::class, 'crearCuarto'])->name('ajustes.cuartos.store');
         Route::delete('/ajustes/cuartos/{cuarto}', [AjustesController::class, 'borrarCuarto'])->name('ajustes.cuartos.destroy');
         Route::post('/ajustes/usuarios', [AjustesController::class, 'crearUsuario'])->name('ajustes.usuarios');
+        Route::post('/ajustes/limites', [AjustesController::class, 'limites'])->name('ajustes.limites');
         Route::delete('/ajustes/usuarios/{user}', [AjustesController::class, 'borrarUsuario'])->name('ajustes.usuarios.destroy');
     });
 });
