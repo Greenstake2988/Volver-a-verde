@@ -100,6 +100,29 @@ CSV;
         $this->assertSame('Cuarto 1', Reserva::where('codigo', 'HMBBB2')->sole()->cuarto->nombre);
     }
 
+    public function test_cuartos_renombrados_o_creados_a_mano_se_reconocen_al_reimportar(): void
+    {
+        // Creado a mano antes de importar y ligado con el principio del nombre del anuncio.
+        $jade = Cuarto::create(['nombre' => 'Jade', 'anuncio_airbnb' => 'Volver a Verde 3']);
+        // Sin anuncio y sin número: no se le asigna un anuncio cualquiera.
+        $bodega = Cuarto::create(['nombre' => 'Bodega']);
+        (new Importador)->airbnb(self::AIRBNB_MX);
+        $this->assertSame('Jade', Reserva::where('codigo', 'HMAAA1')->sole()->cuarto->nombre);
+        $this->assertSame(0, $bodega->reservas()->count());
+        $uno = Reserva::where('codigo', 'HMBBB2')->sole()->cuarto;
+        $this->assertSame('Volver a Verde 1', $uno->nombre);
+        $cuartos = Cuarto::count();
+
+        // Se renombra y se vuelve a importar: mismas reservas, mismos cuartos, nombres respetados.
+        $uno->update(['nombre' => 'Esmeralda']);
+        $r = (new Importador)->airbnb(self::AIRBNB_MX);
+        $this->assertSame(0, $r['nuevas']);
+        $this->assertSame($cuartos, Cuarto::count());
+        $this->assertSame('Esmeralda', Reserva::where('codigo', 'HMBBB2')->sole()->cuarto->nombre);
+        $this->assertSame('Jade', Reserva::where('codigo', 'HMAAA1')->sole()->cuarto->nombre);
+        $this->assertSame(4, Reserva::count());
+    }
+
     public function test_importa_gastos_de_excel(): void
     {
         foreach (range(1, 5) as $i) {

@@ -64,7 +64,7 @@
 </div>
 <div class="card">
   <h2>Cuartos</h2>
-  <p class="ayuda">Al importar el CSV de Airbnb se crea un cuarto por cada anuncio nuevo. “Anuncio en Airbnb” es el nombre del anuncio tal como aparece en el CSV; sirve para saber a qué cuarto pertenece cada reserva. Un cuarto que ya no se renta se desactiva: deja de contar para la ocupación y los gastos generales, pero conserva su historial. Solo se puede borrar un cuarto sin reservas ni gastos.</p>
+  <p class="ayuda">Al importar el CSV de Airbnb se crea un cuarto por cada anuncio nuevo, y después puedes cambiarle el nombre: al volver a importar se sigue reconociendo por su “Anuncio en Airbnb”. Si prefieres crear los cuartos a mano antes de importar, pon en “Anuncio en Airbnb” el principio del nombre del anuncio, por ejemplo “Volver a Verde 4”. Un cuarto que ya no se renta se desactiva: deja de contar para la ocupación y los gastos generales, pero conserva su historial. Solo se puede borrar un cuarto sin reservas ni gastos.</p>
   @if ($cuartos->isNotEmpty())
   <form method="post" action="{{ route('ajustes.cuartos') }}">
     @csrf
@@ -84,7 +84,7 @@
   <form method="post" action="{{ route('ajustes.cuartos.store') }}" class="fila">
     @csrf
     <input name="nombre" placeholder="Nombre" required>
-    <input name="anuncio_airbnb" placeholder="Anuncio en Airbnb (opcional)">
+    <input name="anuncio_airbnb" placeholder="Anuncio en Airbnb, ej. Volver a Verde 4">
     <button>Agregar cuarto</button>
   </form>
 </div>
