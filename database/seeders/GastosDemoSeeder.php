@@ -2,28 +2,31 @@
 
 namespace Database\Seeders;
 
+use App\Models\Cuarto;
 use App\Models\Cuenta;
 use App\Models\Gasto;
 use App\Models\Transferencia;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Solo gastos de ejemplo (sin reservas), desde enero del año en curso.
  * Sirve para probar con las reservas reales importadas de Airbnb:
  *   php artisan db:seed --class=GastosDemoSeeder
- * Para borrarlos después: php artisan tinker --execute="App\Models\Gasto::where('descripcion', 'like', '[demo]%')->delete()"
+ * Si se corre otra vez, borra los gastos de ejemplo anteriores y los vuelve a cargar.
+ * Para borrarlos: php artisan tinker --execute="App\Models\Gasto::where('descripcion', 'like', '[demo]%')->delete()"
  */
 class GastosDemoSeeder extends Seeder
 {
     public function run(): void
     {
-        if (Gasto::where('descripcion', 'like', '[demo]%')->exists()) {
-            $this->command?->warn('Ya hay gastos de ejemplo; no se cargan otra vez.');
+        $n = DB::transaction(function () {
+            Gasto::where('descripcion', 'like', '[demo]%')->delete();
+            Transferencia::where('concepto', 'like', '[demo]%')->delete();
 
-            return;
-        }
-        $n = $this->cargar(CarbonImmutable::today()->startOfYear());
+            return $this->cargar(CarbonImmutable::today()->startOfYear());
+        });
         $this->command?->info("Gastos de ejemplo cargados: {$n}.");
     }
 
@@ -36,6 +39,8 @@ class GastosDemoSeeder extends Seeder
         $credito = Cuenta::where('tipo', 'credito')->orderBy('id')->first();
         // Que las cuentas cuenten desde el inicio de los gastos de ejemplo.
         Cuenta::where('fecha_saldo', '>', $inicio->toDateString())->update(['fecha_saldo' => $inicio->toDateString()]);
+        // Las reparaciones se le cargan a algún cuarto activo, si ya hay (se crean al importar Airbnb).
+        $cuartos = Cuarto::activos()->pluck('id')->all();
         $total = 0;
         for ($m = $inicio->startOfMonth(); $m <= $hoy; $m = $m->addMonthNoOverflow()) {
             $g = function (int $dia, float $monto, string $cat, string $desc, ?Cuenta $cuenta, ?int $cuarto = null) use ($m, $hoy, &$total) {
@@ -54,7 +59,7 @@ class GastosDemoSeeder extends Seeder
             $g(25, 1200, 'Lavandería', 'Sábanas y toallas', $debito);
             $g(28, 8000, 'Sueldos', 'Encargado / recepción', $debito);
             if (mt_rand(0, 1)) {
-                $g(18, [800, 1500, 2500][mt_rand(0, 2)], 'Mantenimiento', 'Reparación', $credito, mt_rand(1, 5));
+                $g(18, [800, 1500, 2500][mt_rand(0, 2)], 'Mantenimiento', 'Reparación', $credito, $cuartos ? $cuartos[mt_rand(0, count($cuartos) - 1)] : null);
             }
 
             // Pago de la tarjeta el día 3 por lo que se gastó con ella el mes anterior.
