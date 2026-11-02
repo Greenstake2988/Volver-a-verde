@@ -2,14 +2,14 @@
 
 namespace Database\Seeders;
 
+use App\Models\Cuarto;
 use App\Models\Cuenta;
-use App\Models\Transferencia;
 use App\Models\Gasto;
 use App\Models\Reserva;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 
-/** Datos inventados para ver cómo se ve la app: php artisan db:seed --class=DemoSeeder */
+/** Reservas y gastos inventados para ver cómo se ve la app: php artisan db:seed --class=DemoSeeder */
 class DemoSeeder extends Seeder
 {
     public function run(): void
@@ -19,11 +19,15 @@ class DemoSeeder extends Seeder
 
             return;
         }
+        foreach (range(Cuarto::count() + 1, 5) as $i) {
+            Cuarto::create(['nombre' => "Cuarto {$i}"]);
+        }
         mt_srand(7);
         $hoy = CarbonImmutable::today();
         $inicio = $hoy->subMonthsNoOverflow(5)->startOfMonth();
-        $tarifas = [1 => 650, 2 => 700, 3 => 800, 4 => 550, 5 => 900];
-        $demanda = [1 => 0.75, 2 => 0.65, 3 => 0.8, 4 => 0.4, 5 => 0.6];
+        $ids = Cuarto::orderBy('id')->limit(5)->pluck('id')->all();
+        $tarifas = array_combine($ids, [650, 700, 800, 550, 900]);
+        $demanda = array_combine($ids, [0.75, 0.65, 0.8, 0.4, 0.6]);
         $huespedes = ['Ana', 'Luis', 'Marta', 'John', 'Sofía', 'Pedro'];
         $k = 0;
         foreach ($tarifas as $cuarto => $tarifa) {
@@ -46,42 +50,8 @@ class DemoSeeder extends Seeder
                 }
             }
         }
-        for ($m = $inicio; $m <= $hoy; $m = $m->addMonthNoOverflow()) {
-            $g = function (int $dia, float $monto, string $cat, string $desc, ?int $cuarto = null) use ($m, $hoy) {
-                if ($m->day($dia) <= $hoy) {
-                    Gasto::create(['fecha' => $m->day($dia), 'monto' => $monto, 'categoria' => $cat,
-                        'descripcion' => $desc, 'cuarto_id' => $cuarto]);
-                }
-            };
-            $g(5, 1400 + mt_rand(0, 600), 'Luz', 'CFE');
-            $g(8, 450, 'Agua', 'Recibo de agua');
-            $g(10, 389, 'Internet', 'Internet fibra');
-            $g(12, 700, 'Gas', 'Tanque de gas');
-            $g(15, 9000, 'Limpieza', 'Sueldo de limpieza');
-            $g(20, 900 + mt_rand(0, 500), 'Insumos', 'Papel, jabón, café');
-            $g(25, 1200, 'Lavandería', 'Sábanas y toallas');
-            $g(28, 8000, 'Sueldos', 'Encargado / recepción');
-            if (mt_rand(0, 1)) {
-                $g(18, [800, 1500, 2500][mt_rand(0, 2)], 'Mantenimiento', 'Reparación', mt_rand(1, 5));
-            }
-        }
-        // Cuentas: débito con saldo inicial, y algunos gastos con la tarjeta de crédito que se paga cada mes.
-        $debito = Cuenta::where('tipo', 'debito')->first();
-        $credito = Cuenta::where('tipo', 'credito')->first();
-        $debito?->update(['saldo_inicial' => 15000, 'fecha_saldo' => $inicio]);
-        $credito?->update(['saldo_inicial' => 0, 'fecha_saldo' => $inicio]);
-        Gasto::query()->update(['cuenta_id' => $debito?->id]);
-        if ($credito) {
-            Gasto::whereIn('categoria', ['Insumos', 'Mantenimiento', 'Internet'])->update(['cuenta_id' => $credito->id]);
-            for ($m = $inicio->addMonth(); $m <= $hoy; $m = $m->addMonthNoOverflow()) {
-                $deuda = Gasto::where('cuenta_id', $credito->id)
-                    ->whereBetween('fecha', [$m->subMonthNoOverflow()->startOfMonth(), $m->subMonthNoOverflow()->endOfMonth()])->sum('monto');
-                if ($deuda > 0 && $m->day(3) <= $hoy) {
-                    Transferencia::create(['fecha' => $m->day(3), 'monto' => $deuda, 'origen_id' => $debito->id,
-                        'destino_id' => $credito->id, 'concepto' => 'Pago mensual']);
-                }
-            }
-        }
+        Cuenta::where('tipo', 'debito')->first()?->update(['saldo_inicial' => 15000, 'fecha_saldo' => $inicio]);
+        (new GastosDemoSeeder)->cargar($inicio);
         $this->command?->info("Datos de ejemplo cargados: {$k} reservas desde {$inicio->toDateString()}.");
     }
 }

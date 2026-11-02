@@ -86,6 +86,10 @@
   const f = document.getElementById('formGasto');
   const sync = () => { f.cuarto_id.disabled = f.personal.checked; if (f.personal.checked) f.cuarto_id.value = ''; };
   f.personal.addEventListener('change', sync); sync();
+  // Con factura, la factura es obligatoria.
+  const archivo = f.querySelector('input[type=file]');
+  const syncFactura = () => { archivo.required = f.factura.checked; };
+  f.factura.addEventListener('change', syncFactura); syncFactura();
 </script>
 @endpush
 @endsection

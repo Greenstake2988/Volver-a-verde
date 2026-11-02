@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Cuarto;
 use App\Models\Cuenta;
+use App\Models\Deposito;
 use App\Models\Gasto;
 use App\Models\Reserva;
 use Carbon\CarbonImmutable;
@@ -100,72 +101,149 @@ class Importador
                 return $c->id;
             }
         }
-        // Un anuncio nuevo se asigna al primer cuarto que todavía no tenga uno.
-        $libre = $cuartos->firstWhere('anuncio_airbnb', '');
-        $libre?->update(['anuncio_airbnb' => $anuncio]);
+        // "Volver a Verde 3| Loft..." va al cuarto que se llama "... 3" si todavía no tiene anuncio;
+        // si no, al primer cuarto libre.
+        $libres = $cuartos->where('anuncio_airbnb', '');
+        $libre = null;
+        if (preg_match('/\b(\d+)\b/', $anuncio, $m)) {
+            $libre = $libres->first(fn ($c) => preg_match('/\b'.$m[1].'$/', trim($c->nombre)));
+        }
+        $libre ??= $libres->first();
+        if ($libre) {
+            $libre->update(['anuncio_airbnb' => $anuncio]);
 
-        return $libre?->id;
+            return $libre->id;
+        }
+
+        // Anuncio nuevo: se crea su cuarto con el nombre corto ("Volver a Verde 4| Loft..." → "Volver a Verde 4").
+        $nombre = trim(preg_split('/\s*(\||\s-\s)\s*/', $anuncio)[0]) ?: $anuncio;
+
+        return Cuarto::create(['nombre' => Str::limit($nombre, 60, ''), 'anuncio_airbnb' => $anuncio])->id;
     }
 
-    /** "Historial de transacciones" de Airbnb (español o inglés). */
+    /**
+     * "Historial de transacciones" de Airbnb (CSV en español o inglés).
+     *
+     * Cada reserva puede tener varios renglones con el mismo código de confirmación:
+     * la reservación, el IVA que pagó el huésped ("Impuestos liquidados como anfitrión"),
+     * las retenciones de IVA e ISR, cancelaciones parciales ("Ajuste") y reembolsos o
+     * cobros de resoluciones. La suma de sus "Monto" es lo que Airbnb deposita, y los
+     * renglones "Payout" son los depósitos reales al banco.
+     */
     public function airbnb(string $texto): array
     {
         $filas = self::leerCsv($texto);
         $reservas = [];
-        $retenciones = [];
+        $depositos = [];
         foreach ($filas as $f) {
             $tipo = self::norm(self::col($f, 'tipo', 'type'));
-            $codigo = self::col($f, 'codigo de confirmacion', 'confirmation code');
-            if (in_array($tipo, ['reservacion', 'reservation', 'reserva'], true)) {
-                $k = $codigo ?: 'sin-codigo-'.count($reservas);
-                $reservas[$k] ??= [
-                    'codigo' => $codigo ?: null,
-                    'huesped' => self::col($f, 'huesped', 'guest'),
-                    'anuncio' => self::col($f, 'anuncio', 'listing'),
-                    'check_in' => self::fecha(self::col($f, 'fecha de inicio', 'start date')),
-                    'noches' => max(1, (int) self::numero(self::col($f, 'noches', 'nights'))),
-                    'bruto' => 0.0, 'comision' => 0.0, 'impuestos' => 0.0, 'fecha_pago' => null,
+            $monto = self::numero(self::col($f, 'monto', 'importe', 'amount'));
+
+            if (in_array($tipo, ['payout', 'pago', 'transferencia'], true)) {
+                $depositos[] = [
+                    'fecha_envio' => self::fecha(self::col($f, 'fecha', 'date')),
+                    'fecha' => self::fecha(self::col($f, 'fecha de llegada estimada', 'fecha de llegada prevista', 'arriving by date'))
+                        ?? self::fecha(self::col($f, 'fecha', 'date')),
+                    'monto' => self::numero(self::col($f, 'ingresos recibidos', 'pagado', 'paid out')),
+                    'referencia' => self::col($f, 'codigo de referencia', 'reference code') ?: null,
+                    'detalles' => mb_substr(self::col($f, 'detalles', 'details'), 0, 250),
                 ];
-                $importe = self::numero(self::col($f, 'importe', 'amount'));
-                $comision = self::numero(self::col($f, 'tarifa de servicio', 'service fee'));
-                $bruto = self::numero(self::col($f, 'ganancias brutas', 'gross earnings')) ?: $importe + $comision;
-                $reservas[$k]['bruto'] += $bruto;
-                $reservas[$k]['comision'] += $comision;
-                $reservas[$k]['impuestos'] += max(0, $bruto - $comision - $importe);
-                $reservas[$k]['fecha_pago'] = self::fecha(self::col($f, 'fecha', 'date')) ?? $reservas[$k]['fecha_pago'];
-            } elseif (str_contains($tipo, 'reten') || str_contains($tipo, 'withholding') || in_array($tipo, ['impuesto', 'tax'], true)) {
-                // Retenciones de ISR/IVA que Airbnb muestra como renglón aparte.
-                $retenciones[] = [$codigo, abs(self::numero(self::col($f, 'importe', 'amount')))];
+
+                continue;
             }
-        }
-        foreach ($retenciones as [$codigo, $monto]) {
-            if (isset($reservas[$codigo])) {
-                $reservas[$codigo]['impuestos'] += $monto;
+
+            $codigo = self::col($f, 'codigo de confirmacion', 'confirmation code');
+            $k = $codigo ?: 'sin-codigo-'.count($reservas);
+            $r = &$reservas[$k];
+            $r ??= ['codigo' => $codigo ?: null, 'huesped' => '', 'anuncio' => '', 'check_in' => null, 'fecha_salida' => null,
+                'noches' => 0, 'bruto' => 0.0, 'comision' => 0.0, 'iva_trasladado' => 0.0, 'retencion_iva' => 0.0,
+                'retencion_isr' => 0.0, 'ish' => 0.0, 'fecha_pago' => null];
+            // Datos de la estancia: vienen en casi todos los renglones.
+            $r['huesped'] = $r['huesped'] ?: self::col($f, 'huesped', 'guest');
+            $r['anuncio'] = $r['anuncio'] ?: self::col($f, 'espacio', 'anuncio', 'listing');
+            $r['check_in'] ??= self::fecha(self::col($f, 'fecha de inicio', 'start date'));
+            $r['fecha_salida'] ??= self::fecha(self::col($f, 'fecha de finalizacion', 'end date'));
+            $r['noches'] = $r['noches'] ?: (int) self::numero(self::col($f, 'noches', 'nights'));
+            $fecha = self::fecha(self::col($f, 'fecha', 'date'));
+
+            $tarifa = self::numero(self::col($f, 'tarifa de servicio', 'service fee'));
+            $brutos = self::numero(self::col($f, 'ingresos brutos', 'ganancias brutas', 'gross earnings'));
+            if (in_array($tipo, ['reservacion', 'reservation', 'reserva'], true)) {
+                $bruto = $brutos ?: $monto + $tarifa;
+                $r['bruto'] += $bruto;
+                $r['comision'] += $bruto - $monto;       // incluye los centavos de redondeo de Airbnb
+                $r['ish'] += self::numero(self::col($f, 'impuesto liquidado por airbnb', 'occupancy taxes'));
+                $r['fecha_pago'] = max($r['fecha_pago'] ?? '', $fecha ?? '') ?: null;
+            } elseif (in_array($tipo, ['ajuste', 'adjustment'], true)) {
+                // Cancelación o cambio: la tarifa de servicio viene como lo que Airbnb devuelve de comisión.
+                $r['comision'] -= $tarifa;
+                $r['bruto'] += $monto - $tarifa;
+                $r['ish'] -= self::numero(self::col($f, 'impuesto liquidado por airbnb', 'occupancy taxes'));
+            } elseif (str_contains($tipo, 'impuestos liquidados') || str_contains($tipo, 'impuestos remitidos')
+                || str_contains($tipo, 'host remitted') || str_contains($tipo, 'pass through')) {
+                $r['iva_trasladado'] += $monto;
+            } elseif ((str_contains($tipo, 'reten') || str_contains($tipo, 'withholding')) && (str_contains($tipo, 'iva') || str_contains($tipo, 'vat'))) {
+                $r['retencion_iva'] -= $monto;           // la retención viene negativa y su revocación positiva
+            } elseif ((str_contains($tipo, 'reten') || str_contains($tipo, 'withholding')) && (str_contains($tipo, 'renta') || str_contains($tipo, 'income'))) {
+                $r['retencion_isr'] -= $monto;
+            } else {
+                // Cobros y ajustes de resoluciones (daños, reembolsos) y cualquier otro concepto.
+                $r['bruto'] += $monto;
             }
+            unset($r);
         }
 
-        $nuevas = $actualizadas = 0;
+        // Primero los anuncios en orden ("Volver a Verde 1", "2"...) para que los cuartos nuevos queden ordenados.
+        $anuncios = array_unique(array_filter(array_column($reservas, 'anuncio')));
+        natcasesort($anuncios);
+        foreach ($anuncios as $anuncio) {
+            $this->cuartoPorAnuncio($anuncio);
+        }
+
+        $nuevas = $actualizadas = $omitidas = 0;
+        $totalNeto = 0.0;
         foreach ($reservas as $r) {
             if (! $r['check_in']) {
+                $omitidas++;
+
                 continue;
             }
             $datos = [
                 'cuarto_id' => $this->cuartoPorAnuncio($r['anuncio']),
-                'huesped' => $r['huesped'], 'check_in' => $r['check_in'], 'noches' => $r['noches'],
-                'bruto' => round($r['bruto'], 2), 'comision' => round($r['comision'], 2),
-                'impuestos' => round($r['impuestos'], 2), 'fecha_pago' => $r['fecha_pago'],
+                'huesped' => $r['huesped'], 'check_in' => $r['check_in'], 'fecha_salida' => $r['fecha_salida'],
+                'noches' => max(1, $r['noches']), 'fecha_pago' => $r['fecha_pago'], 'origen' => 'airbnb',
+                'impuestos' => round($r['retencion_iva'] + $r['retencion_isr'], 2),
             ];
+            foreach (['bruto', 'comision', 'iva_trasladado', 'retencion_iva', 'retencion_isr', 'ish'] as $c) {
+                $datos[$c] = round($r[$c], 2);
+            }
             $existente = $r['codigo'] ? Reserva::where('codigo', $r['codigo'])->first() : null;
             if ($existente) {
                 $existente->update($datos);
                 $actualizadas++;
             } else {
-                Reserva::create($datos + ['codigo' => $r['codigo']]);
+                $existente = Reserva::create($datos + ['codigo' => $r['codigo']]);
                 $nuevas++;
             }
+            $totalNeto += $existente->neto;
         }
 
-        return ['nuevas' => $nuevas, 'actualizadas' => $actualizadas, 'filas' => count($filas)];
+        $depositosNuevos = 0;
+        $totalDepositos = 0.0;
+        foreach ($depositos as $d) {
+            if (! $d['fecha'] || ! $d['monto']) {
+                continue;
+            }
+            $totalDepositos += $d['monto'];
+            $dep = $d['referencia']
+                ? Deposito::firstOrCreate(['referencia' => $d['referencia']], $d)
+                : Deposito::create($d);
+            $depositosNuevos += (int) $dep->wasRecentlyCreated;
+        }
+
+        return ['nuevas' => $nuevas, 'actualizadas' => $actualizadas, 'omitidas' => $omitidas,
+            'depositos' => $depositosNuevos, 'filas' => count($filas),
+            'total_neto' => round($totalNeto, 2), 'total_depositos' => round($totalDepositos, 2)];
     }
 
     /** Columnas: fecha, monto, categoria y opcionales descripcion, cuarto, factura, personal, pagado con. */

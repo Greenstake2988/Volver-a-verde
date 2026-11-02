@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\Cuarto;
 use App\Models\Gasto;
+use App\Models\Reserva;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -130,5 +132,43 @@ class AccesoTest extends TestCase
         }
         $this->actingAs($admin)->get('/datos/exportar/gastos?desde=2026-01-01&hasta=2026-12-31')->assertOk()
             ->assertHeader('content-disposition');
+    }
+
+    public function test_admin_agrega_desactiva_y_borra_cuartos(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $this->actingAs($admin)->post('/ajustes/cuartos/nuevo', ['nombre' => 'Cuarto 6'])->assertSessionHasNoErrors();
+        $this->actingAs($admin)->post('/ajustes/cuartos/nuevo', ['nombre' => 'Bodega'])->assertSessionHasNoErrors();
+        [$seis, $bodega] = Cuarto::orderBy('id')->get()->all();
+        Reserva::create(['cuarto_id' => $seis->id, 'check_in' => '2026-10-01', 'noches' => 1, 'bruto' => 100]);
+
+        // Desactivado: ya no sale para capturar reservas, pero conserva su historial.
+        $this->actingAs($admin)->post('/ajustes/cuartos', ['cuartos' => [
+            $seis->id => ['nombre' => 'Cuarto 6', 'activo' => '0'],
+            $bodega->id => ['nombre' => 'Bodega', 'activo' => '1'],
+        ]])->assertSessionHasNoErrors();
+        $this->assertFalse($seis->fresh()->activo);
+        $this->actingAs($admin)->get('/reservas')->assertDontSee('<option value="'.$seis->id.'">', false);
+
+        // Con reservas no se borra; sin historial sí.
+        $this->actingAs($admin)->delete("/ajustes/cuartos/{$seis->id}")->assertSessionHasErrors('cuarto');
+        $this->actingAs($admin)->delete("/ajustes/cuartos/{$bodega->id}")->assertSessionHasNoErrors();
+        $this->assertSame(['Cuarto 6'], Cuarto::pluck('nombre')->all());
+
+        $socio = User::factory()->create();
+        $this->actingAs($socio)->post('/ajustes/cuartos/nuevo', ['nombre' => 'X'])->assertForbidden();
+    }
+
+    public function test_gasto_con_factura_exige_subir_la_factura(): void
+    {
+        $socio = User::factory()->create();
+        $gasto = ['fecha' => now()->toDateString(), 'monto' => 900, 'categoria' => 'Gasolina', 'factura' => '1'];
+        $this->actingAs($socio)->post('/gastos', $gasto)->assertSessionHasErrors('comprobantes');
+        $this->assertSame(0, Gasto::count());
+
+        Storage::fake('local');
+        $pdf = UploadedFile::fake()->createWithContent('factura.pdf', "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF");
+        $this->actingAs($socio)->post('/gastos', $gasto + ['comprobantes' => [$pdf]])->assertSessionHasNoErrors();
+        $this->assertTrue(Gasto::sole()->factura);
     }
 }

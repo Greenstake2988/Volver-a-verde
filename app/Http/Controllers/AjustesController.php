@@ -60,12 +60,36 @@ class AjustesController extends Controller
             'cuartos' => 'required|array',
             'cuartos.*.nombre' => 'required|string|max:60',
             'cuartos.*.anuncio_airbnb' => 'nullable|string|max:200',
+            'cuartos.*.activo' => 'nullable|boolean',
         ]);
         foreach ($d['cuartos'] as $id => $c) {
-            Cuarto::whereKey($id)->update(['nombre' => $c['nombre'], 'anuncio_airbnb' => $c['anuncio_airbnb'] ?? '']);
+            Cuarto::whereKey($id)->update(['nombre' => $c['nombre'], 'anuncio_airbnb' => $c['anuncio_airbnb'] ?? '',
+                'activo' => (bool) ($c['activo'] ?? false)]);
         }
 
         return back()->with('ok', 'Cuartos guardados.');
+    }
+
+    public function crearCuarto(Request $request)
+    {
+        $d = $request->validate([
+            'nombre' => 'required|string|max:60',
+            'anuncio_airbnb' => 'nullable|string|max:200',
+        ]);
+        Cuarto::create(['nombre' => $d['nombre'], 'anuncio_airbnb' => $d['anuncio_airbnb'] ?? '']);
+
+        return back()->with('ok', "Cuarto {$d['nombre']} agregado.");
+    }
+
+    public function borrarCuarto(Cuarto $cuarto)
+    {
+        // Con historial no se borra: se perderían de qué cuarto eran sus reservas y gastos.
+        if ($cuarto->reservas()->exists() || $cuarto->gastos()->exists()) {
+            return back()->withErrors(['cuarto' => "{$cuarto->nombre} tiene reservas o gastos; desactívalo en lugar de borrarlo."]);
+        }
+        $cuarto->delete();
+
+        return back()->with('ok', "Cuarto {$cuarto->nombre} borrado.");
     }
 
     public function crearUsuario(Request $request)

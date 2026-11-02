@@ -21,10 +21,10 @@
 @endcan
 <div class="card">
   <table class="tabla">
-    <tr><th>Check-in</th><th>Cuarto</th><th>Huésped</th><th class="n">Noches</th><th class="n">Cobrado</th><th class="n">Comisión</th><th class="n">Impuestos</th><th class="n">Neto</th><th>Pago</th><th></th></tr>
+    <tr><th>Check-in</th><th>Cuarto</th><th>Huésped</th><th class="n">Noches</th><th class="n">Cobrado</th><th class="n">IVA</th><th class="n">Comisión</th><th class="n">Retenciones</th><th class="n">Neto</th><th>Pago</th><th></th></tr>
     @foreach ($reservas as $r)
       <tr><td>{{ $r->check_in->toDateString() }}</td><td>{{ $r->cuarto->nombre ?? '' }}</td><td>{{ $r->huesped }}</td><td class="n">{{ $r->noches }}</td>
-        <td class="n">{{ dinero($r->bruto) }}</td><td class="n">{{ dinero($r->comision) }}</td><td class="n">{{ dinero($r->impuestos) }}</td><td class="n">{{ dinero($r->neto) }}</td>
+        <td class="n">{{ dinero($r->bruto) }}</td><td class="n">{{ dinero($r->iva_trasladado) }}</td><td class="n">{{ dinero($r->comision) }}</td><td class="n">{{ dinero($r->impuestos) }}</td><td class="n">{{ dinero($r->neto) }}</td>
         <td>{{ $r->fecha_pago?->toDateString() }}</td>
         <td>@can('admin')<form method="post" action="{{ route('reservas.destroy', $r) }}" class="inline" data-confirmar="¿Borrar esta reserva?">@csrf @method('delete')<button class="link">Borrar</button></form>@endcan</td></tr>
     @endforeach
