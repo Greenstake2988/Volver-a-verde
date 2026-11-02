@@ -91,34 +91,39 @@ class Importador
             return null;
         }
         $cuartos = Cuarto::orderBy('id')->get();
+        // 1) El cuarto ligado a ese anuncio. Basta con el principio del nombre del anuncio
+        //    ("Volver a Verde 4" liga "Volver a Verde 4| Loft Tropical..."), así que el cuarto
+        //    se puede llamar como sea y si Airbnb cambia el título del anuncio se sigue reconociendo.
+        $n = self::norm($anuncio);
+        // Se guarda solo el nombre corto ("Volver a Verde 4| Loft..." → "Volver a Verde 4").
+        $corto = Str::limit(trim(preg_split('/\s*(\||\s-\s)\s*/', $anuncio)[0]) ?: $anuncio, 200, '');
         foreach ($cuartos as $c) {
-            if ($c->anuncio_airbnb !== '' && self::norm($c->anuncio_airbnb) === self::norm($anuncio)) {
+            $a = self::norm($c->anuncio_airbnb);
+            if ($a !== '' && ($a === $n || (str_starts_with($n, $a) && ! ctype_digit(mb_substr($n, mb_strlen($a), 1))))) {
                 return $c->id;
             }
         }
         foreach ($cuartos as $c) {
-            if (self::norm($c->nombre) !== '' && str_contains(self::norm($anuncio), self::norm($c->nombre))) {
+            if ($c->anuncio_airbnb === '' && self::norm($c->nombre) !== '' && str_contains($n, self::norm($c->nombre))) {
+                $c->update(['anuncio_airbnb' => $corto]);
+
                 return $c->id;
             }
         }
-        // "Volver a Verde 3| Loft..." va al cuarto que se llama "... 3" si todavía no tiene anuncio;
-        // si no, al primer cuarto libre.
+        // 2) "Volver a Verde 3| Loft..." va al cuarto que se llama "... 3" si todavía no tiene anuncio.
         $libres = $cuartos->where('anuncio_airbnb', '');
         $libre = null;
         if (preg_match('/\b(\d+)\b/', $anuncio, $m)) {
             $libre = $libres->first(fn ($c) => preg_match('/\b'.$m[1].'$/', trim($c->nombre)));
         }
-        $libre ??= $libres->first();
         if ($libre) {
-            $libre->update(['anuncio_airbnb' => $anuncio]);
+            $libre->update(['anuncio_airbnb' => $corto]);
 
             return $libre->id;
         }
 
-        // Anuncio nuevo: se crea su cuarto con el nombre corto ("Volver a Verde 4| Loft..." → "Volver a Verde 4").
-        $nombre = trim(preg_split('/\s*(\||\s-\s)\s*/', $anuncio)[0]) ?: $anuncio;
-
-        return Cuarto::create(['nombre' => Str::limit($nombre, 60, ''), 'anuncio_airbnb' => $anuncio])->id;
+        // 3) Anuncio nuevo: se crea su cuarto con el nombre corto; se puede renombrar después.
+        return Cuarto::create(['nombre' => Str::limit($corto, 60, ''), 'anuncio_airbnb' => $corto])->id;
     }
 
     /**
