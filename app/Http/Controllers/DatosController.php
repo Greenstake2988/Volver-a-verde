@@ -48,12 +48,15 @@ class DatosController extends Controller
     public function exportar(Request $request, string $tipo)
     {
         $datos = $request->validate(['desde' => 'required|date', 'hasta' => 'required|date|after_or_equal:desde',
-            'cuarto_id' => 'nullable|integer']);
+            'cuarto_id' => 'nullable|integer', 'user_id' => 'nullable|integer', 'filtro' => 'nullable|string|max:20']);
         abort_unless(in_array($tipo, ['reservas', 'gastos'], true), 404);
         $cuarto = ! empty($datos['cuarto_id']) ? \App\Models\Cuarto::find($datos['cuarto_id']) : null;
-        $nombre = "{$tipo}_".($cuarto ? \Illuminate\Support\Str::slug($cuarto->nombre).'_' : '')."{$datos['desde']}_{$datos['hasta']}.csv";
+        $socio = $tipo === 'gastos' && ! empty($datos['user_id']) ? \App\Models\User::find($datos['user_id']) : null;
+        $quien = $cuarto?->nombre ?? $socio?->name;
+        $nombre = "{$tipo}_".($quien ? \Illuminate\Support\Str::slug($quien).'_' : '')."{$datos['desde']}_{$datos['hasta']}.csv";
+        $yo = $request->user()->id;
 
-        return response()->streamDownload(function () use ($tipo, $datos) {
+        return response()->streamDownload(function () use ($tipo, $datos, $yo) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");   // BOM para que Excel lea bien los acentos
             if ($tipo === 'reservas') {
@@ -72,8 +75,8 @@ class DatosController extends Controller
             } else {
                 fputcsv($out, ['Fecha', 'Categoría', 'Cuarto', 'Descripción', 'Monto', 'Tiene factura',
                     'Del negocio', 'Pagado con', 'Pagó', 'Comprobantes'], ',', '"', '');
-                Gasto::with(['cuarto', 'cuenta', 'user'])->withCount('comprobantes')
-                    ->whereBetween('fecha', [$datos['desde'], $datos['hasta']])->orderBy('fecha')
+                GastoController::filtrar(Gasto::with(['cuarto', 'cuenta', 'user'])->withCount('comprobantes'), $datos, $yo)
+                    ->orderBy('fecha')
                     ->each(function (Gasto $g) use ($out) {
                         fputcsv($out, [$g->fecha->toDateString(), $g->categoria,
                             $g->personal ? '' : ($g->cuarto->nombre ?? 'General'), $g->descripcion, self::n($g->monto),
