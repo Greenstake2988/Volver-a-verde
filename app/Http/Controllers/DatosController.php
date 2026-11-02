@@ -47,9 +47,11 @@ class DatosController extends Controller
 
     public function exportar(Request $request, string $tipo)
     {
-        $datos = $request->validate(['desde' => 'required|date', 'hasta' => 'required|date|after_or_equal:desde']);
+        $datos = $request->validate(['desde' => 'required|date', 'hasta' => 'required|date|after_or_equal:desde',
+            'cuarto_id' => 'nullable|integer']);
         abort_unless(in_array($tipo, ['reservas', 'gastos'], true), 404);
-        $nombre = "{$tipo}_{$datos['desde']}_{$datos['hasta']}.csv";
+        $cuarto = ! empty($datos['cuarto_id']) ? \App\Models\Cuarto::find($datos['cuarto_id']) : null;
+        $nombre = "{$tipo}_".($cuarto ? \Illuminate\Support\Str::slug($cuarto->nombre).'_' : '')."{$datos['desde']}_{$datos['hasta']}.csv";
 
         return response()->streamDownload(function () use ($tipo, $datos) {
             $out = fopen('php://output', 'w');
@@ -58,7 +60,7 @@ class DatosController extends Controller
                 fputcsv($out, ['Código', 'Cuarto', 'Huésped', 'Check-in', 'Salida', 'Noches', 'Ingreso bruto (sin IVA)',
                     'IVA trasladado', 'Comisión Airbnb', 'Retención IVA', 'Retención ISR', 'Neto depositado',
                     'ISH pagado por Airbnb', 'Fecha de pago'], ',', '"', '');
-                Reserva::with('cuarto')->whereBetween('check_in', [$datos['desde'], $datos['hasta']])
+                ReservaController::filtrar(Reserva::with('cuarto'), $datos)
                     ->orderBy('check_in')->each(function (Reserva $r) use ($out) {
                         // Capturadas a mano: la retención total va en "Retención IVA" si no hay desglose.
                         $retIva = $r->retencion_iva || $r->retencion_isr ? $r->retencion_iva : $r->impuestos;

@@ -92,3 +92,4 @@ form.inline { display: inline; }
 .login-pagina h1 { margin: 0; font-size: 22px; color: var(--verde); }
 .tag.ambar { background: var(--ambar-claro); color: var(--ambar); }
 .cuentas { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.nw { white-space: nowrap; }
