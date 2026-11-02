@@ -18,7 +18,7 @@ class Gasto extends Model
     protected $table = 'gastos';
 
     protected $fillable = ['fecha', 'monto', 'categoria', 'cuarto_id', 'descripcion',
-        'personal', 'factura', 'de_la_cuenta', 'user_id'];
+        'personal', 'factura', 'de_la_cuenta', 'user_id', 'capturado_por'];
 
     protected function casts(): array
     {
@@ -39,6 +39,11 @@ class Gasto extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function capturadoPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'capturado_por');
     }
 
     public function comprobantes(): HasMany

@@ -18,6 +18,7 @@ Hecha con **Laravel 13** (PHP 8.3) y SQLite. Las vistas son Blade con CSS propio
 | Registrar gastos y subir comprobantes | ✓ | ✓ |
 | Ver resumen, flujo, reservas y gastos | ✓ | ✓ |
 | Borrar gastos | solo los suyos | todos |
+| Registrar gastos a nombre de otro socio (“¿Quién lo pagó?”) | | ✓ |
 | Importar, capturar reservas, ajustes, usuarios, reporte del contador | | ✓ |
 
 ## Cómo se calcula

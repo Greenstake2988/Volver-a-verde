@@ -58,7 +58,7 @@ class DatosController extends Controller
                     });
             } else {
                 fputcsv($out, ['Fecha', 'Categoría', 'Cuarto', 'Descripción', 'Monto', 'Tiene factura',
-                    'Del negocio', 'Pagado desde la cuenta del negocio', 'Registró', 'Comprobantes'], ',', '"', '');
+                    'Del negocio', 'Pagado desde la cuenta del negocio', 'Pagó', 'Comprobantes'], ',', '"', '');
                 Gasto::with(['cuarto', 'user'])->withCount('comprobantes')
                     ->whereBetween('fecha', [$datos['desde'], $datos['hasta']])->orderBy('fecha')
                     ->each(function (Gasto $g) use ($out) {
