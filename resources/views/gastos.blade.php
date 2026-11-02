@@ -43,15 +43,52 @@
 </div>
 
 <div class="card">
-  <form method="get" class="fila">
-    <label>Mostrar
-      <select name="filtro" onchange="this.form.submit()">
-        @foreach (['todos' => 'Todos', 'mios' => 'Los que yo pagué', 'negocio' => 'Solo del negocio', 'personal' => 'Solo los que no son del negocio', 'factura' => 'Solo con factura', 'sin-comprobante' => 'Sin comprobante'] as $v => $txt)
-          <option value="{{ $v }}" @selected($filtro === $v)>{{ $txt }}</option>
-        @endforeach
-      </select>
-    </label>
+  <form method="get" action="{{ route('gastos.index') }}" class="filtros">
+    <select name="user_id">
+      <option value="">Todos los socios</option>
+      @foreach ($socios as $u)<option value="{{ $u->id }}" @selected($f['user_id'] == $u->id)>{{ $u->name }}</option>@endforeach
+    </select>
+    <select name="filtro">
+      @foreach (['todos' => 'Todos los gastos', 'mios' => 'Los que yo pagué', 'negocio' => 'Solo del negocio', 'personal' => 'Solo los que no son del negocio', 'propio' => 'Pagados con dinero propio', 'factura' => 'Solo con factura', 'sin-comprobante' => 'Sin comprobante'] as $v => $txt)
+        <option value="{{ $v }}" @selected($filtro === $v)>{{ $txt }}</option>
+      @endforeach
+    </select>
+    <label>Desde <input type="date" name="desde" value="{{ $f['desde'] }}"></label>
+    <label>hasta <input type="date" name="hasta" value="{{ $f['hasta'] }}"></label>
+    <button>Filtrar</button>
+    @if ($f['user_id'] || $f['desde'] || $f['hasta'] || $filtro !== 'todos')<a href="{{ route('gastos.index') }}">Quitar filtros</a>@endif
   </form>
+  <p class="ayuda">Rápido:
+    @foreach ($rapidos as $txt => [$d, $h])
+      <a href="{{ route('gastos.index', $base + ['desde' => $d->toDateString(), 'hasta' => $h->toDateString()]) }}">{{ $txt }}</a>@if (! $loop->last) · @endif
+    @endforeach
+    @can('admin')
+      @if ($f['desde'] && $f['hasta'])
+        · <a href="{{ route('datos.exportar', ['tipo' => 'gastos'] + $base + ['desde' => $f['desde'], 'hasta' => $f['hasta']]) }}">Descargar CSV de esta selección</a>
+      @else
+        · Elige fechas para descargar el CSV
+      @endif
+    @endcan
+  </p>
+
+  @if ($porSocio->isNotEmpty())
+  <h3>Por socio</h3>
+  <table class="tabla">
+    <tr><th>Socio</th><th class="n">Gastos</th><th class="n">Del negocio</th><th class="n">No del negocio</th><th class="n">Con dinero propio</th><th class="n">Total</th><th class="n">Le debemos hoy</th></tr>
+    @foreach ($porSocio as $s)
+      <tr><td><a href="{{ route('gastos.index', array_filter(['user_id' => $s->user_id, 'desde' => $f['desde'], 'hasta' => $f['hasta']])) }}">{{ $s->nombre ?? 'Sin socio' }}</a></td>
+        <td class="n">{{ $s->gastos }}</td><td class="n">{{ dinero($s->negocio) }}</td><td class="n">{{ dinero($s->no_negocio) }}</td>
+        <td class="n">{{ dinero($s->propio) }}</td><td class="n"><b>{{ dinero($s->total) }}</b></td>
+        <td class="n">{{ isset($pendiente[$s->user_id]) ? dinero($pendiente[$s->user_id]) : '—' }}</td></tr>
+    @endforeach
+    @if ($porSocio->count() > 1)
+      <tr><td><b>Total</b></td><td class="n">{{ $porSocio->sum('gastos') }}</td><td class="n">{{ dinero($porSocio->sum('negocio')) }}</td><td class="n">{{ dinero($porSocio->sum('no_negocio')) }}</td>
+        <td class="n">{{ dinero($porSocio->sum('propio')) }}</td><td class="n"><b>{{ dinero($porSocio->sum('total')) }}</b></td><td></td></tr>
+    @endif
+  </table>
+  <p class="ayuda">“Con dinero propio” es lo que el socio pagó de su bolsa en este periodo. “Le debemos hoy” es lo que falta reembolsarle en total, sin importar las fechas del filtro.</p>
+  <h3>Detalle</h3>
+  @endif
   <table class="tabla">
     <tr><th>Fecha</th><th>Categoría</th><th>Cuarto</th><th>Descripción</th><th>Pagó</th><th>Comprobante</th><th></th><th class="n">Monto</th><th></th></tr>
     @foreach ($gastos as $g)

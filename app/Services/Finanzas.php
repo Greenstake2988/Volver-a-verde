@@ -156,6 +156,24 @@ class Finanzas
      * - Pagar la tarjeta es una transferencia entre cuentas: no es entrada ni salida del negocio.
      * - Un gasto pagado con dinero propio de un socio no mueve ninguna cuenta hasta que se le reembolsa.
      */
+    /** Lo que el negocio le debe a cada socio por gastos que pagó con su dinero, a la fecha $hoy. */
+    public function porReembolsar(?CarbonImmutable $hoy = null): array
+    {
+        $hoy = ($hoy ?? CarbonImmutable::today())->toDateString();
+        $porReembolsar = [];
+        foreach (Gasto::whereNull('cuenta_id')->where('fecha', '<=', $hoy)->with('user')->get() as $g) {
+            $porReembolsar[$g->user_id] ??= ['user_id' => $g->user_id, 'nombre' => $g->user->name ?? 'Sin nombre', 'monto' => 0.0];
+            $porReembolsar[$g->user_id]['monto'] += $g->monto;
+        }
+        foreach (Transferencia::whereNotNull('reembolso_a')->where('fecha', '<=', $hoy)->get() as $t) {
+            if (isset($porReembolsar[$t->reembolso_a])) {
+                $porReembolsar[$t->reembolso_a]['monto'] -= $t->monto;
+            }
+        }
+
+        return array_values(array_filter($porReembolsar, fn ($p) => round($p['monto'], 2) > 0));
+    }
+
     public function flujo(?CarbonImmutable $hoy = null): array
     {
         $hoy = ($hoy ?? CarbonImmutable::today())->toDateString();
@@ -223,18 +241,7 @@ class Finanzas
         }
         unset($mes);
 
-        // Lo que el negocio le debe a cada socio por gastos que pagó con su dinero.
-        $porReembolsar = [];
-        foreach (Gasto::whereNull('cuenta_id')->where('fecha', '<=', $hoy)->with('user')->get() as $g) {
-            $porReembolsar[$g->user_id] ??= ['user_id' => $g->user_id, 'nombre' => $g->user->name ?? 'Sin nombre', 'monto' => 0.0];
-            $porReembolsar[$g->user_id]['monto'] += $g->monto;
-        }
-        foreach (Transferencia::whereNotNull('reembolso_a')->where('fecha', '<=', $hoy)->get() as $t) {
-            if (isset($porReembolsar[$t->reembolso_a])) {
-                $porReembolsar[$t->reembolso_a]['monto'] -= $t->monto;
-            }
-        }
-        $porReembolsar = array_values(array_filter($porReembolsar, fn ($p) => round($p['monto'], 2) > 0));
+        $porReembolsar = $this->porReembolsar(CarbonImmutable::parse($hoy));
         $totalReembolsar = array_sum(array_column($porReembolsar, 'monto'));
 
         $listaCuentas = $cuentas->map(fn (Cuenta $c) => [

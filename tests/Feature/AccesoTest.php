@@ -191,4 +191,25 @@ class AccesoTest extends TestCase
         $this->assertStringNotContainsString('Caro', $csv);
         $this->assertStringNotContainsString('Beto', $csv);
     }
+
+    public function test_reporte_de_gastos_por_socio_con_filtros_y_csv(): void
+    {
+        $admin = User::factory()->admin()->create(['name' => 'Oscar']);
+        $ana = User::factory()->create(['name' => 'Ana']);
+        $debito = \App\Models\Cuenta::where('tipo', 'debito')->first();
+        Gasto::create(['fecha' => '2026-10-05', 'monto' => 800, 'categoria' => 'Gasolina', 'descripcion' => 'gas-ana', 'user_id' => $ana->id]);
+        Gasto::create(['fecha' => '2026-10-06', 'monto' => 300, 'categoria' => 'Otros', 'descripcion' => 'doctor-ana', 'personal' => true, 'user_id' => $ana->id]);
+        Gasto::create(['fecha' => '2026-09-01', 'monto' => 999, 'categoria' => 'Otros', 'descripcion' => 'viejo-ana', 'user_id' => $ana->id]);
+        Gasto::create(['fecha' => '2026-10-07', 'monto' => 500, 'categoria' => 'Luz', 'descripcion' => 'luz-oscar', 'user_id' => $admin->id, 'cuenta_id' => $debito->id]);
+
+        $filtro = ['user_id' => $ana->id, 'desde' => '2026-10-01', 'hasta' => '2026-10-31'];
+        $this->actingAs($admin)->get('/gastos?'.http_build_query($filtro))->assertOk()
+            ->assertSee('gas-ana')->assertSee('doctor-ana')->assertDontSee('viejo-ana')->assertDontSee('luz-oscar')
+            ->assertSeeInOrder(['Ana', dinero(800), dinero(300), dinero(1100), dinero(1100), dinero(2099)]);   // negocio, no negocio, propio, total, le debemos
+
+        $csv = $this->actingAs($admin)->get('/datos/exportar/gastos?'.http_build_query($filtro))->streamedContent();
+        $this->assertStringContainsString('gas-ana', $csv);
+        $this->assertStringNotContainsString('viejo-ana', $csv);
+        $this->assertStringNotContainsString('luz-oscar', $csv);
+    }
 }

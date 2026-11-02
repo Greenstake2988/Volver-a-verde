@@ -19,24 +19,70 @@ class GastoController extends Controller
 
     public function index(Request $request)
     {
-        $filtro = $request->query('filtro', 'todos');
-        $q = Gasto::with(['cuarto', 'cuenta', 'user', 'capturadoPor', 'comprobantes'])->orderByDesc('fecha')->orderByDesc('id');
-        match ($filtro) {
-            'negocio' => $q->where('personal', false),
-            'personal' => $q->where('personal', true),
-            'factura' => $q->where('factura', true),
-            'sin-comprobante' => $q->doesntHave('comprobantes'),
-            'mios' => $q->where('user_id', $request->user()->id),
-            default => null,
-        };
+        $f = self::validarFiltros($request);
+        $q = self::filtrar(Gasto::query(), $f, $request->user()->id);
+
+        // Reporte por socio de todo lo filtrado (no solo de la página).
+        $porSocio = (clone $q)->leftJoin('users', 'users.id', '=', 'gastos.user_id')
+            ->groupBy('gastos.user_id', 'users.name')
+            ->selectRaw('gastos.user_id, users.name as nombre, count(*) as gastos, sum(gastos.monto) as total,
+                sum(case when gastos.personal = 0 then gastos.monto else 0 end) as negocio,
+                sum(case when gastos.personal = 1 then gastos.monto else 0 end) as no_negocio,
+                sum(case when gastos.cuenta_id is null then gastos.monto else 0 end) as propio')
+            ->orderByDesc('total')->get();
+        // Lo que se le debe hoy a cada socio (todos sus gastos con dinero propio menos lo ya reembolsado).
+        $pendiente = collect((new \App\Services\Finanzas)->porReembolsar())->pluck('monto', 'user_id');
 
         return view('gastos', [
-            'gastos' => $q->paginate(100)->withQueryString(),
+            'gastos' => $q->with(['cuarto', 'cuenta', 'user', 'capturadoPor', 'comprobantes'])
+                ->orderByDesc('fecha')->orderByDesc('id')->paginate(100)->withQueryString(),
             'cuartos' => Cuarto::activos()->orderBy('id')->get(),
             'cuentas' => Cuenta::orderBy('id')->get(),
             'usuarios' => $request->user()->admin ? User::orderBy('name')->get() : collect(),
-            'filtro' => $filtro,
+            'socios' => User::orderBy('name')->get(),
+            'filtro' => $f['filtro'],
+            'f' => $f,
+            'porSocio' => $porSocio,
+            'pendiente' => $pendiente,
+            'rapidos' => [
+                'Este mes' => [now()->startOfMonth(), now()->endOfMonth()],
+                'Mes pasado' => [now()->subMonthNoOverflow()->startOfMonth(), now()->subMonthNoOverflow()->endOfMonth()],
+                'Este año' => [now()->startOfYear(), now()->endOfYear()],
+            ],
+            // Filtros que se conservan en los atajos y en la descarga.
+            'base' => array_filter(['filtro' => $f['filtro'] !== 'todos' ? $f['filtro'] : null, 'user_id' => $f['user_id']]),
         ]);
+    }
+
+    public static function validarFiltros(Request $request): array
+    {
+        $f = $request->validate([
+            'filtro' => 'nullable|string|max:20',
+            'user_id' => 'nullable|integer',
+            'desde' => 'nullable|date',
+            'hasta' => 'nullable|date',
+        ]);
+
+        return ['filtro' => $f['filtro'] ?? 'todos', 'user_id' => $f['user_id'] ?? null,
+            'desde' => $f['desde'] ?? null, 'hasta' => $f['hasta'] ?? null];
+    }
+
+    /** Filtros de la lista de gastos; los usa también la descarga en CSV. */
+    public static function filtrar($q, array $f, ?int $yo = null)
+    {
+        match ($f['filtro'] ?? 'todos') {
+            'negocio' => $q->where('gastos.personal', false),
+            'personal' => $q->where('gastos.personal', true),
+            'factura' => $q->where('gastos.factura', true),
+            'sin-comprobante' => $q->doesntHave('comprobantes'),
+            'propio' => $q->whereNull('gastos.cuenta_id'),
+            'mios' => $q->where('gastos.user_id', $yo),
+            default => null,
+        };
+
+        return $q->when($f['user_id'] ?? null, fn ($q, $id) => $q->where('gastos.user_id', $id))
+            ->when($f['desde'] ?? null, fn ($q, $d) => $q->where('gastos.fecha', '>=', substr($d, 0, 10)))
+            ->when($f['hasta'] ?? null, fn ($q, $d) => $q->where('gastos.fecha', '<=', substr($d, 0, 10)));
     }
 
     public function store(Request $request)
