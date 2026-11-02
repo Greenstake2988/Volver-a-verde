@@ -109,4 +109,14 @@ class FinanzasTest extends TestCase
         $this->assertEqualsWithDelta(2000, $f['meses'][0]['entradas'], 0.01);
         $this->assertEqualsWithDelta(700 + 1200 + 400, $f['meses'][0]['salidas'], 0.01);
     }
+
+    public function test_gastos_de_ejemplo_sin_cuartos_y_sin_duplicar(): void
+    {
+        Cuarto::query()->delete();   // base nueva: todavía no se importa Airbnb
+        $this->seed(\Database\Seeders\GastosDemoSeeder::class);
+        $n = Gasto::count();
+        $this->assertGreaterThan(0, $n);
+        $this->seed(\Database\Seeders\GastosDemoSeeder::class);
+        $this->assertSame($n, Gasto::count());
+    }
 }
