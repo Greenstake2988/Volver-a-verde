@@ -10,7 +10,7 @@
   </div>
   <div class="card">
     <h2>Importar gastos desde Excel</h2>
-    <p class="ayuda">En Excel: <b>Archivo → Guardar como → CSV</b>. Columnas: <code>fecha, monto, categoria</code> y opcionales <code>descripcion, cuarto, factura, personal</code> (las dos últimas con “si” o “no”).</p>
+    <p class="ayuda">En Excel: <b>Archivo → Guardar como → CSV</b>. Columnas: <code>fecha, monto, categoria</code> y opcionales <code>descripcion, cuarto, factura, personal, pagado con</code>. <code>factura</code> y <code>personal</code> van con “si” o “no”; <code>pagado con</code> es el nombre de la cuenta, “crédito”, “débito” o “propio”, y si va vacío se usa la de débito.</p>
     <form method="post" action="{{ route('datos.gastos') }}" enctype="multipart/form-data">
       @csrf<input type="file" name="archivo" accept=".csv" required data-autoenviar>
     </form>

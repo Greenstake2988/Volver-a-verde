@@ -2,7 +2,8 @@
 
 namespace Database\Seeders;
 
-use App\Models\Ajuste;
+use App\Models\Cuenta;
+use App\Models\Transferencia;
 use App\Models\Gasto;
 use App\Models\Reserva;
 use Carbon\CarbonImmutable;
@@ -64,8 +65,23 @@ class DemoSeeder extends Seeder
                 $g(18, [800, 1500, 2500][mt_rand(0, 2)], 'Mantenimiento', 'Reparación', mt_rand(1, 5));
             }
         }
-        Ajuste::guardar('saldo_inicial', '15000');
-        Ajuste::guardar('fecha_saldo', $inicio->toDateString());
+        // Cuentas: débito con saldo inicial, y algunos gastos con la tarjeta de crédito que se paga cada mes.
+        $debito = Cuenta::where('tipo', 'debito')->first();
+        $credito = Cuenta::where('tipo', 'credito')->first();
+        $debito?->update(['saldo_inicial' => 15000, 'fecha_saldo' => $inicio]);
+        $credito?->update(['saldo_inicial' => 0, 'fecha_saldo' => $inicio]);
+        Gasto::query()->update(['cuenta_id' => $debito?->id]);
+        if ($credito) {
+            Gasto::whereIn('categoria', ['Insumos', 'Mantenimiento', 'Internet'])->update(['cuenta_id' => $credito->id]);
+            for ($m = $inicio->addMonth(); $m <= $hoy; $m = $m->addMonthNoOverflow()) {
+                $deuda = Gasto::where('cuenta_id', $credito->id)
+                    ->whereBetween('fecha', [$m->subMonthNoOverflow()->startOfMonth(), $m->subMonthNoOverflow()->endOfMonth()])->sum('monto');
+                if ($deuda > 0 && $m->day(3) <= $hoy) {
+                    Transferencia::create(['fecha' => $m->day(3), 'monto' => $deuda, 'origen_id' => $debito->id,
+                        'destino_id' => $credito->id, 'concepto' => 'Pago mensual']);
+                }
+            }
+        }
         $this->command?->info("Datos de ejemplo cargados: {$k} reservas desde {$inicio->toDateString()}.");
     }
 }

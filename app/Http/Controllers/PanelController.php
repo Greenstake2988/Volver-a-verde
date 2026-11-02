@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Cuenta;
 use App\Models\Movimiento;
+use App\Models\Transferencia;
+use App\Models\User;
 use App\Services\Finanzas;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -35,12 +38,47 @@ class PanelController extends Controller
 
     public function flujo(Finanzas $finanzas)
     {
-        return view('flujo', ['f' => $finanzas->flujo()]);
+        return view('flujo', [
+            'f' => $finanzas->flujo(),
+            'cuentas' => Cuenta::orderBy('id')->get(),
+            'usuarios' => User::orderBy('name')->get(),
+        ]);
+    }
+
+    /** Pago de la tarjeta de crédito (o cualquier traspaso entre cuentas propias). */
+    public function guardarTransferencia(Request $request)
+    {
+        $d = $request->validate([
+            'fecha' => 'required|date',
+            'monto' => 'required|numeric|min:0.01',
+            'origen_id' => 'required|exists:cuentas,id',
+            'destino_id' => 'required|exists:cuentas,id|different:origen_id',
+            'concepto' => 'nullable|string|max:200',
+        ]);
+        Transferencia::create($d + ['concepto' => '']);
+
+        return back()->with('ok', 'Pago registrado.');
+    }
+
+    /** Devolverle a un socio lo que pagó con su dinero. */
+    public function guardarReembolso(Request $request)
+    {
+        $d = $request->validate([
+            'fecha' => 'required|date',
+            'monto' => 'required|numeric|min:0.01',
+            'origen_id' => 'required|exists:cuentas,id',
+            'reembolso_a' => 'required|exists:users,id',
+            'concepto' => 'nullable|string|max:200',
+        ]);
+        Transferencia::create($d + ['concepto' => '']);
+
+        return back()->with('ok', 'Reembolso registrado.');
     }
 
     public function guardarMovimiento(Request $request)
     {
         Movimiento::create($request->validate([
+            'cuenta_id' => 'required|exists:cuentas,id',
             'fecha' => 'required|date',
             'monto' => 'required|numeric|not_in:0',
             'concepto' => 'nullable|string|max:200',

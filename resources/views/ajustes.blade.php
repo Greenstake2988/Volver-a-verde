@@ -35,13 +35,31 @@
 
 @can('admin')
 <div class="card">
-  <h2>Saldo de la cuenta</h2>
-  <p class="ayuda">Pon el saldo que tenía la cuenta en una fecha. A partir de ahí la app suma depósitos y resta gastos.</p>
-  <form method="post" action="{{ route('ajustes.saldo') }}" class="fila">
+  <h2>Cuentas</h2>
+  <p class="ayuda">Pon el saldo que tenía cada cuenta en una fecha; a partir de ahí la app suma y resta. En las tarjetas de crédito pon lo que debías ese día.</p>
+  <form method="post" action="{{ route('ajustes.cuentas') }}">
     @csrf
-    <label>Saldo <input type="number" step="0.01" name="saldo_inicial" value="{{ $saldo }}" required></label>
-    <label>al día <input type="date" name="fecha_saldo" value="{{ $fechaSaldo }}" required></label>
-    <button>Guardar</button>
+    <table class="tabla">
+      <tr><th>Nombre</th><th>Tipo</th><th>Saldo / deuda inicial</th><th>Al día</th><th>Recibe Airbnb</th></tr>
+      @foreach ($cuentas as $c)
+        <tr>
+          <td><input name="cuentas[{{ $c->id }}][nombre]" value="{{ $c->nombre }}" required></td>
+          <td>{{ \App\Models\Cuenta::TIPOS[$c->tipo] ?? $c->tipo }}</td>
+          <td><input type="number" step="0.01" name="cuentas[{{ $c->id }}][saldo]" value="{{ $c->esCredito() ? abs($c->saldo_inicial) : $c->saldo_inicial }}" required></td>
+          <td><input type="date" name="cuentas[{{ $c->id }}][fecha_saldo]" value="{{ $c->fecha_saldo->toDateString() }}" required></td>
+          <td>@unless ($c->esCredito())<input type="radio" name="recibe_airbnb" value="{{ $c->id }}" @checked($c->recibe_airbnb)>@endunless</td>
+        </tr>
+      @endforeach
+    </table>
+    <button style="margin-top:10px">Guardar cuentas</button>
+  </form>
+  <form method="post" action="{{ route('ajustes.cuentas.store') }}" class="fila" style="margin-top:14px">
+    @csrf
+    <input name="nombre" placeholder="Nueva cuenta" required>
+    <select name="tipo">@foreach (\App\Models\Cuenta::TIPOS as $k => $t)<option value="{{ $k }}">{{ $t }}</option>@endforeach</select>
+    <input type="number" step="0.01" name="saldo" placeholder="Saldo / deuda" required>
+    <input type="date" name="fecha_saldo" value="{{ now()->toDateString() }}" required>
+    <button>Agregar cuenta</button>
   </form>
 </div>
 <div class="card">

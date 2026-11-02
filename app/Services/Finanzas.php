@@ -2,11 +2,12 @@
 
 namespace App\Services;
 
-use App\Models\Ajuste;
 use App\Models\Cuarto;
+use App\Models\Cuenta;
 use App\Models\Gasto;
 use App\Models\Movimiento;
 use App\Models\Reserva;
+use App\Models\Transferencia;
 use Carbon\CarbonImmutable;
 
 /** Cálculos de rentabilidad y flujo de efectivo. */
@@ -141,56 +142,107 @@ class Finanzas
         return compact('nivel', 'titulo', 'notas');
     }
 
-    /** Entradas y salidas de la cuenta, por mes, y el saldo actual. */
+    /**
+     * Saldo de cada cuenta, deuda de la tarjeta, lo que se debe a socios y entradas/salidas por mes.
+     *
+     * - Los depósitos de Airbnb entran a la cuenta que los recibe, en su fecha de pago.
+     * - Un gasto con tarjeta de crédito cuenta como salida el día que se hizo (sube la deuda).
+     * - Pagar la tarjeta es una transferencia entre cuentas: no es entrada ni salida del negocio.
+     * - Un gasto pagado con dinero propio de un socio no mueve ninguna cuenta hasta que se le reembolsa.
+     */
     public function flujo(?CarbonImmutable $hoy = null): array
     {
         $hoy = ($hoy ?? CarbonImmutable::today())->toDateString();
-        $saldoInicial = (float) Ajuste::valor('saldo_inicial', '0');
-        $fechaSaldo = Ajuste::valor('fecha_saldo', '1900-01-01');
+        $cuentas = Cuenta::orderBy('id')->get()->keyBy('id');
+        $airbnb = Cuenta::deAirbnb();
+        $desde = fn (?int $cuentaId) => $cuentaId && isset($cuentas[$cuentaId])
+            ? $cuentas[$cuentaId]->fecha_saldo->toDateString() : '9999-12-31';
 
-        $movs = collect();
+        // Cada renglón: fecha, cuenta, monto (+ entra / − sale) y si es interno (entre cuentas propias).
+        $lineas = collect();
         foreach (Reserva::with('cuarto')->get() as $r) {
             $fecha = ($r->fecha_pago ?? CarbonImmutable::parse($r->check_in)->addDay())->toDateString();
-            $movs->push(['fecha' => $fecha, 'monto' => $r->neto,
+            $lineas->push(['fecha' => $fecha, 'cuenta_id' => $airbnb?->id, 'monto' => $r->neto, 'interno' => false,
                 'concepto' => trim("Airbnb {$r->codigo} ".($r->cuarto->nombre ?? '')." {$r->huesped}")]);
         }
-        foreach (Gasto::where('de_la_cuenta', true)->get() as $g) {
-            $movs->push(['fecha' => $g->fecha->toDateString(), 'monto' => -$g->monto,
+        foreach (Gasto::whereNotNull('cuenta_id')->get() as $g) {
+            $lineas->push(['fecha' => $g->fecha->toDateString(), 'cuenta_id' => $g->cuenta_id, 'monto' => -$g->monto,
+                'interno' => false,
                 'concepto' => trim("{$g->categoria}: {$g->descripcion}", ': ').($g->personal ? ' (no es del negocio)' : '')]);
         }
+        foreach (Transferencia::with(['destino', 'socio'])->get() as $t) {
+            $fecha = $t->fecha->toDateString();
+            $concepto = $t->destino_id
+                ? "Pago a {$t->destino->nombre}"
+                : 'Reembolso a '.($t->socio->name ?? 'socio');
+            $concepto .= $t->concepto ? " ({$t->concepto})" : '';
+            $lineas->push(['fecha' => $fecha, 'cuenta_id' => $t->origen_id, 'monto' => -$t->monto,
+                'interno' => (bool) $t->destino_id, 'concepto' => $concepto]);
+            if ($t->destino_id) {
+                $lineas->push(['fecha' => $fecha, 'cuenta_id' => $t->destino_id, 'monto' => $t->monto,
+                    'interno' => true, 'concepto' => "Pago desde {$cuentas[$t->origen_id]->nombre}"]);
+            }
+        }
         foreach (Movimiento::all() as $mv) {
-            $movs->push(['fecha' => $mv->fecha->toDateString(), 'monto' => $mv->monto, 'concepto' => $mv->concepto ?: 'Ajuste']);
+            $lineas->push(['fecha' => $mv->fecha->toDateString(), 'cuenta_id' => $mv->cuenta_id, 'monto' => $mv->monto,
+                'interno' => false, 'concepto' => $mv->concepto ?: 'Ajuste']);
         }
 
-        $movs = $movs->filter(fn ($m) => $m['fecha'] >= $fechaSaldo)->sortBy('fecha')->values();
-        $porCobrar = $movs->filter(fn ($m) => $m['fecha'] > $hoy && $m['monto'] > 0)->sum('monto');
-        $movs = $movs->filter(fn ($m) => $m['fecha'] <= $hoy)->values();
+        // Solo cuenta lo que pasó desde la fecha del saldo inicial de cada cuenta.
+        $lineas = $lineas->filter(fn ($l) => $l['fecha'] >= $desde($l['cuenta_id']))->sortBy('fecha')->values();
+        $porCobrar = $lineas->filter(fn ($l) => $l['fecha'] > $hoy && $l['monto'] > 0)->sum('monto');
+        $lineas = $lineas->filter(fn ($l) => $l['fecha'] <= $hoy)->values();
 
-        $saldo = $saldoInicial;
+        $saldos = $cuentas->map(fn (Cuenta $c) => $c->saldo_inicial)->all();
         $meses = [];
-        $lista = [];
-        foreach ($movs as $m) {
-            $saldo += $m['monto'];
-            $lista[] = $m + ['saldo' => $saldo];
-            $k = substr($m['fecha'], 0, 7);
+        foreach ($lineas as $l) {
+            $saldos[$l['cuenta_id']] += $l['monto'];
+            if ($l['interno']) {
+                continue;
+            }
+            $k = substr($l['fecha'], 0, 7);
             $meses[$k] ??= ['mes' => $k, 'entradas' => 0.0, 'salidas' => 0.0];
-            $meses[$k][$m['monto'] >= 0 ? 'entradas' : 'salidas'] += abs($m['monto']);
+            $meses[$k][$l['monto'] >= 0 ? 'entradas' : 'salidas'] += abs($l['monto']);
         }
         ksort($meses);
-        $s = $saldoInicial;
+        $s = $cuentas->sum('saldo_inicial');
         foreach ($meses as &$mes) {
             $s += $mes['entradas'] - $mes['salidas'];
             $mes['saldo_final'] = $s;
         }
         unset($mes);
 
+        // Lo que el negocio le debe a cada socio por gastos que pagó con su dinero.
+        $porReembolsar = [];
+        foreach (Gasto::whereNull('cuenta_id')->where('fecha', '<=', $hoy)->with('user')->get() as $g) {
+            $porReembolsar[$g->user_id] ??= ['user_id' => $g->user_id, 'nombre' => $g->user->name ?? 'Sin nombre', 'monto' => 0.0];
+            $porReembolsar[$g->user_id]['monto'] += $g->monto;
+        }
+        foreach (Transferencia::whereNotNull('reembolso_a')->where('fecha', '<=', $hoy)->get() as $t) {
+            if (isset($porReembolsar[$t->reembolso_a])) {
+                $porReembolsar[$t->reembolso_a]['monto'] -= $t->monto;
+            }
+        }
+        $porReembolsar = array_values(array_filter($porReembolsar, fn ($p) => round($p['monto'], 2) > 0));
+        $totalReembolsar = array_sum(array_column($porReembolsar, 'monto'));
+
+        $listaCuentas = $cuentas->map(fn (Cuenta $c) => [
+            'id' => $c->id, 'nombre' => $c->nombre, 'tipo' => $c->tipo, 'saldo' => $saldos[$c->id],
+            'saldo_inicial' => $c->saldo_inicial, 'fecha_saldo' => $c->fecha_saldo->toDateString(),
+        ])->values()->all();
+
         return [
-            'saldo_inicial' => $saldoInicial,
-            'fecha_saldo' => $fechaSaldo,
-            'saldo_actual' => $saldo,
+            'cuentas' => $listaCuentas,
+            'efectivo' => collect($listaCuentas)->where('tipo', 'debito')->sum('saldo'),
+            'deuda_tarjetas' => -collect($listaCuentas)->where('tipo', 'credito')->sum('saldo'),
+            'por_reembolsar' => $porReembolsar,
+            'total_reembolsar' => $totalReembolsar,
+            'disponible' => array_sum($saldos) - $totalReembolsar,
             'por_cobrar' => $porCobrar,
             'meses' => array_values($meses),
-            'movimientos' => array_slice(array_reverse($lista), 0, 200),
+            'movimientos' => $lineas->reverse()->take(200)->map(fn ($l) => $l + [
+                'cuenta' => $cuentas[$l['cuenta_id']]->nombre ?? '—',
+            ])->values()->all(),
         ];
     }
 }

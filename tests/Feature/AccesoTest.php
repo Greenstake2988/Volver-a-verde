@@ -46,12 +46,13 @@ class AccesoTest extends TestCase
 
         $this->actingAs($socio)->post('/gastos', [
             'fecha' => now()->toDateString(), 'monto' => 650, 'categoria' => 'Gasolina',
-            'descripcion' => 'Camioneta', 'de_la_cuenta' => '1',
+            'descripcion' => 'Camioneta', 'cuenta_id' => '',
             'comprobantes' => [UploadedFile::fake()->image('ticket.jpg')],
         ])->assertSessionHasNoErrors();
 
         $gasto = Gasto::firstOrFail();
         $this->assertSame($socio->id, $gasto->user_id);
+        $this->assertNull($gasto->cuenta_id);   // dinero propio: queda por reembolsar
         $this->assertCount(1, $gasto->comprobantes);
         Storage::disk('local')->assertExists($gasto->comprobantes[0]->ruta);
         $this->get(route('comprobantes.show', $gasto->comprobantes[0]))->assertOk();
@@ -79,6 +80,20 @@ class AccesoTest extends TestCase
         // Un socio que intenta registrar a nombre de otro queda a su propio nombre.
         $this->actingAs($socio)->post('/gastos', $gasto + ['user_id' => $otro->id])->assertSessionHasNoErrors();
         $this->assertSame($socio->id, Gasto::latest('id')->first()->user_id);
+    }
+
+    public function test_solo_admin_registra_pagos_de_tarjeta_y_reembolsos(): void
+    {
+        $socio = User::factory()->create();
+        $admin = User::factory()->admin()->create();
+        $pago = ['fecha' => '2026-10-20', 'monto' => 1000, 'origen_id' => 1, 'destino_id' => 2];
+
+        $this->actingAs($socio)->post('/transferencias', $pago)->assertForbidden();
+        $this->actingAs($admin)->post('/transferencias', $pago)->assertSessionHasNoErrors();
+        $this->actingAs($admin)->post('/transferencias', ['destino_id' => 1] + $pago)->assertSessionHasErrors('destino_id');
+        $this->actingAs($admin)->post('/reembolsos', ['fecha' => '2026-10-21', 'monto' => 50, 'origen_id' => 1,
+            'reembolso_a' => $socio->id])->assertSessionHasNoErrors();
+        $this->assertSame(2, \App\Models\Transferencia::count());
     }
 
     public function test_rechaza_archivos_que_no_son_comprobantes(): void

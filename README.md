@@ -8,10 +8,10 @@ Hecha con **Laravel 13** (PHP 8.3) y SQLite. Las vistas son Blade con CSS propio
 ## Qué hace
 
 - **Resumen**: utilidad neta, ocupación, tarifa promedio, de dónde sale la utilidad (cobrado → comisión → impuestos retenidos → depositado → gastos), gastos por categoría y rentabilidad por cuarto, con conclusiones en lenguaje simple.
-- **Flujo de efectivo**: saldo actual de la cuenta, entradas y salidas por mes, lo que falta por cobrar, y ajustes cuando no cuadre con el banco.
-- **Gastos**: cada socio registra sus gastos desde el celular con foto, PDF o XML del comprobante. Se marcan *con factura*, *no es del negocio* (sale en el reporte del contador pero no resta en la utilidad) y *pagado desde la cuenta del negocio* (si no, no baja el saldo).
+- **Flujo de efectivo**: saldo de cada cuenta (débito y crédito), lo que se debe en la tarjeta, lo que se debe a cada socio, el disponible real, entradas y salidas por mes y lo que falta por cobrar. Ahí se registran los pagos de la tarjeta, los reembolsos a socios y los ajustes con el banco.
+- **Gastos**: cada socio registra sus gastos desde el celular con foto, PDF o XML del comprobante. Se marcan *con factura*, *no es del negocio* (sale en el reporte del contador pero no resta en la utilidad) y con qué se pagó: una cuenta del negocio (débito o crédito) o dinero propio del socio, que queda por reembolsar.
 - **Importar / Contador** (admin): importa el CSV de Airbnb (Ganancias → Historial de transacciones) y el CSV de gastos de Excel; descarga reservas y gastos del periodo para el contador.
-- **Ajustes**: usuarios, saldo inicial de la cuenta, nombres de los cuartos y su anuncio en Airbnb.
+- **Ajustes**: usuarios, cuentas (saldo o deuda inicial y cuál recibe los depósitos de Airbnb), nombres de los cuartos y su anuncio en Airbnb.
 
 | | Socio | Administrador |
 |---|---|---|
@@ -27,7 +27,9 @@ Hecha con **Laravel 13** (PHP 8.3) y SQLite. Las vistas son Blade con CSS propio
 - **Utilidad neta** = depositado − gastos del negocio.
 - **Ocupación** = noches rentadas ÷ (cuartos × días del periodo). Una reserva que cruza de mes se reparte por noches.
 - **Por cuarto**: los gastos marcados con un cuarto se le cargan a ese cuarto; los generales se reparten igual entre los 5.
-- **Saldo** = saldo inicial + depósitos (por fecha de pago) − gastos pagados desde la cuenta + ajustes.
+- **Saldo de cada cuenta** = saldo inicial + depósitos de Airbnb (en la cuenta que los recibe, por fecha de pago) − gastos pagados con esa cuenta ± pagos de tarjeta y reembolsos + ajustes. En una tarjeta de crédito el saldo es la deuda.
+- **Disponible real** = débito − deuda de tarjetas − lo que se debe a socios.
+- Una compra con tarjeta cuenta como gasto y como salida el día que se hizo; pagar la tarjeta no vuelve a contar.
 
 El código de los cálculos está en `app/Services/Finanzas.php` y la importación en `app/Services/Importador.php`.
 
