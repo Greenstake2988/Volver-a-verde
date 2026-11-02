@@ -156,6 +156,32 @@ class Finanzas
      * - Pagar la tarjeta es una transferencia entre cuentas: no es entrada ni salida del negocio.
      * - Un gasto pagado con dinero propio de un socio no mueve ninguna cuenta hasta que se le reembolsa.
      */
+    /**
+     * Lo que cada socio le debe al negocio: gastos que no son del negocio pagados con una
+     * cuenta o tarjeta del negocio, menos lo que ya pagó (movimientos de entrada a su nombre).
+     */
+    public function nosDeben(?CarbonImmutable $hoy = null): array
+    {
+        $hoy = ($hoy ?? CarbonImmutable::today())->toDateString();
+        $deuda = [];
+        $nombres = \App\Models\User::pluck('name', 'id');
+        $sumar = function (?int $uid, float $monto) use (&$deuda, $nombres) {
+            if (! $uid) {
+                return;
+            }
+            $deuda[$uid] ??= ['user_id' => $uid, 'nombre' => $nombres[$uid] ?? 'Sin nombre', 'monto' => 0.0];
+            $deuda[$uid]['monto'] += $monto;
+        };
+        foreach (Gasto::where('personal', true)->whereNotNull('cuenta_id')->where('fecha', '<=', $hoy)->get(['user_id', 'monto']) as $g) {
+            $sumar($g->user_id, $g->monto);
+        }
+        foreach (Movimiento::whereNotNull('user_id')->where('fecha', '<=', $hoy)->get(['user_id', 'monto']) as $m) {
+            $sumar($m->user_id, -$m->monto);
+        }
+
+        return array_values(array_filter($deuda, fn ($d) => round($d['monto'], 2) > 0));
+    }
+
     /** Lo que el negocio le debe a cada socio por gastos que pagó con su dinero, a la fecha $hoy. */
     public function porReembolsar(?CarbonImmutable $hoy = null): array
     {
@@ -194,10 +220,11 @@ class Finanzas
             $lineas->push(['fecha' => $fecha, 'cuenta_id' => $airbnb?->id, 'monto' => $r->neto, 'interno' => false,
                 'concepto' => trim("Airbnb {$r->codigo} ".($r->cuarto->nombre ?? '')." {$r->huesped}")]);
         }
-        foreach (Gasto::whereNotNull('cuenta_id')->get() as $g) {
+        foreach (Gasto::whereNotNull('cuenta_id')->with('user')->get() as $g) {
             $lineas->push(['fecha' => $g->fecha->toDateString(), 'cuenta_id' => $g->cuenta_id, 'monto' => -$g->monto,
                 'interno' => false,
-                'concepto' => trim("{$g->categoria}: {$g->descripcion}", ': ').($g->personal ? ' (no es del negocio)' : '')]);
+                'concepto' => trim("{$g->categoria}: {$g->descripcion}", ': ')
+                    .($g->personal ? ' (no es del negocio; lo debe '.($g->user->name ?? 'el socio').')' : '')]);
         }
         foreach (Transferencia::with(['destino', 'socio'])->get() as $t) {
             $fecha = $t->fecha->toDateString();
@@ -212,9 +239,10 @@ class Finanzas
                     'interno' => true, 'concepto' => "Pago desde {$cuentas[$t->origen_id]->nombre}"]);
             }
         }
-        foreach (Movimiento::all() as $mv) {
+        foreach (Movimiento::with('usuario')->get() as $mv) {
+            $concepto = $mv->user_id ? trim('Pago de '.($mv->usuario->name ?? 'socio').' '.$mv->concepto) : ($mv->concepto ?: 'Ajuste');
             $lineas->push(['fecha' => $mv->fecha->toDateString(), 'cuenta_id' => $mv->cuenta_id, 'monto' => $mv->monto,
-                'interno' => false, 'concepto' => $mv->concepto ?: 'Ajuste']);
+                'interno' => false, 'concepto' => $concepto]);
         }
 
         // Solo cuenta lo que pasó desde la fecha del saldo inicial de cada cuenta.
@@ -243,6 +271,7 @@ class Finanzas
 
         $porReembolsar = $this->porReembolsar(CarbonImmutable::parse($hoy));
         $totalReembolsar = array_sum(array_column($porReembolsar, 'monto'));
+        $nosDeben = $this->nosDeben(CarbonImmutable::parse($hoy));
 
         $listaCuentas = $cuentas->map(fn (Cuenta $c) => [
             'id' => $c->id, 'nombre' => $c->nombre, 'tipo' => $c->tipo, 'saldo' => $saldos[$c->id],
@@ -255,6 +284,8 @@ class Finanzas
             'deuda_tarjetas' => -collect($listaCuentas)->where('tipo', 'credito')->sum('saldo'),
             'por_reembolsar' => $porReembolsar,
             'total_reembolsar' => $totalReembolsar,
+            'nos_deben' => $nosDeben,
+            'total_nos_deben' => array_sum(array_column($nosDeben, 'monto')),
             'disponible' => array_sum($saldos) - $totalReembolsar,
             'por_cobrar' => $porCobrar,
             'meses' => array_values($meses),

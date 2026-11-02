@@ -30,16 +30,25 @@ class GastoController extends Controller
                 sum(case when gastos.personal = 1 then gastos.monto else 0 end) as no_negocio,
                 sum(case when gastos.cuenta_id is null then gastos.monto else 0 end) as propio')
             ->orderByDesc('total')->get();
-        // Lo que se le debe hoy a cada socio (todos sus gastos con dinero propio menos lo ya reembolsado).
-        $pendiente = collect((new \App\Services\Finanzas)->porReembolsar())->pluck('monto', 'user_id');
+        $finanzas = new \App\Services\Finanzas;
+        // Lo que cada socio le debe hoy al negocio (gastos personales con cuentas del negocio menos lo que ya pagó).
+        $nosDebe = collect($finanzas->nosDeben())->pluck('monto', 'user_id');
+        // Lo que el negocio le debe a cada socio (casos raros: pagó con su propio dinero).
+        $pendiente = collect($finanzas->porReembolsar())->pluck('monto', 'user_id');
+        $usuarios = User::orderBy('name')->get();
 
         return view('gastos', [
             'gastos' => $q->with(['cuarto', 'cuenta', 'user', 'capturadoPor', 'comprobantes'])
                 ->orderByDesc('fecha')->orderByDesc('id')->paginate(100)->withQueryString(),
             'cuartos' => Cuarto::activos()->orderBy('id')->get(),
             'cuentas' => Cuenta::orderBy('id')->get(),
-            'usuarios' => $request->user()->admin ? User::orderBy('name')->get() : collect(),
-            'socios' => User::orderBy('name')->get(),
+            'usuarios' => $request->user()->admin ? $usuarios : collect(),
+            'socios' => $usuarios,
+            'nosDebe' => $nosDebe,
+            'esteMes' => self::personalDelMes(),
+            'topes' => $usuarios->pluck('limite_mensual', 'id')->filter(),
+            // Con qué paga normalmente cada socio: su tarjeta del negocio.
+            'cuentaDe' => $usuarios->mapWithKeys(fn ($u) => [$u->id => Cuenta::dePago($u->id)?->id]),
             'filtro' => $f['filtro'],
             'f' => $f,
             'porSocio' => $porSocio,
@@ -52,6 +61,16 @@ class GastoController extends Controller
             // Filtros que se conservan en los atajos y en la descarga.
             'base' => array_filter(['filtro' => $f['filtro'] !== 'todos' ? $f['filtro'] : null, 'user_id' => $f['user_id']]),
         ]);
+    }
+
+    /** Gastos que no son del negocio cargados a cuentas del negocio en el mes, por socio. */
+    public static function personalDelMes(?\Carbon\CarbonImmutable $dia = null)
+    {
+        $dia ??= \Carbon\CarbonImmutable::today();
+
+        return Gasto::where('personal', true)->whereNotNull('cuenta_id')
+            ->whereBetween('fecha', [$dia->startOfMonth()->toDateString(), $dia->endOfMonth()->toDateString()])
+            ->groupBy('user_id')->selectRaw('user_id, sum(monto) as total')->pluck('total', 'user_id');
     }
 
     public static function validarFiltros(Request $request): array
@@ -117,7 +136,17 @@ class GastoController extends Controller
             $this->guardarArchivo($gasto, $archivo, $request->user()->id);
         }
 
-        return back()->with('ok', 'Gasto guardado.');
+        // Aviso si el socio ya pasó su tope del mes en gastos personales con cuentas del negocio.
+        $msg = 'Gasto guardado.';
+        $socio = User::find($duenoId);
+        if ($gasto->personal && $gasto->cuenta_id && $socio?->limite_mensual) {
+            $mes = (float) (self::personalDelMes(\Carbon\CarbonImmutable::parse($gasto->fecha))[$socio->id] ?? 0);
+            if ($mes > $socio->limite_mensual) {
+                $msg .= ' Ojo: '.$socio->name.' lleva '.dinero($mes).' este mes en gastos que no son del negocio; su tope es '.dinero($socio->limite_mensual).'.';
+            }
+        }
+
+        return back()->with('ok', $msg);
     }
 
     public function destroy(Gasto $gasto)

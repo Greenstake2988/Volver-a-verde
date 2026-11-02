@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
-#[Fillable(['name', 'usuario', 'password', 'admin'])]
+#[Fillable(['name', 'usuario', 'password', 'admin', 'limite_mensual'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -20,6 +20,7 @@ class User extends Authenticatable
         return [
             'password' => 'hashed',
             'admin' => 'boolean',
+            'limite_mensual' => 'float',
         ];
     }
 }

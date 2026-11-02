@@ -27,6 +27,7 @@ class AjustesController extends Controller
             'cuentas.*.nombre' => 'required|string|max:60',
             'cuentas.*.saldo' => 'required|numeric',
             'cuentas.*.fecha_saldo' => 'required|date',
+            'cuentas.*.user_id' => 'nullable|exists:users,id',
             'recibe_airbnb' => 'nullable|exists:cuentas,id',
         ]);
         foreach ($d['cuentas'] as $id => $c) {
@@ -34,6 +35,7 @@ class AjustesController extends Controller
             // En crédito se captura lo que se debe (positivo) y se guarda como saldo negativo.
             $saldo = $cuenta->esCredito() ? -abs((float) $c['saldo']) : (float) $c['saldo'];
             $cuenta->update(['nombre' => $c['nombre'], 'saldo_inicial' => $saldo, 'fecha_saldo' => $c['fecha_saldo'],
+                'user_id' => $c['user_id'] ?? null,
                 'recibe_airbnb' => (int) ($d['recibe_airbnb'] ?? 0) === $cuenta->id]);
         }
 
@@ -47,8 +49,9 @@ class AjustesController extends Controller
             'tipo' => 'required|in:'.implode(',', array_keys(Cuenta::TIPOS)),
             'saldo' => 'required|numeric',
             'fecha_saldo' => 'required|date',
+            'user_id' => 'nullable|exists:users,id',
         ]);
-        Cuenta::create(['nombre' => $d['nombre'], 'tipo' => $d['tipo'], 'fecha_saldo' => $d['fecha_saldo'],
+        Cuenta::create(['nombre' => $d['nombre'], 'tipo' => $d['tipo'], 'fecha_saldo' => $d['fecha_saldo'], 'user_id' => $d['user_id'] ?? null,
             'saldo_inicial' => $d['tipo'] === 'credito' ? -abs((float) $d['saldo']) : (float) $d['saldo']]);
 
         return back()->with('ok', "Cuenta {$d['nombre']} creada.");
@@ -90,6 +93,16 @@ class AjustesController extends Controller
         $cuarto->delete();
 
         return back()->with('ok', "Cuarto {$cuarto->nombre} borrado.");
+    }
+
+    public function limites(Request $request)
+    {
+        $d = $request->validate(['limites' => 'array', 'limites.*' => 'nullable|numeric|min:0']);
+        foreach ($d['limites'] ?? [] as $id => $limite) {
+            User::whereKey($id)->update(['limite_mensual' => $limite === null || $limite === '' ? null : (float) $limite]);
+        }
+
+        return back()->with('ok', 'Topes guardados.');
     }
 
     public function crearUsuario(Request $request)

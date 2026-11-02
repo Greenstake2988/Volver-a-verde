@@ -4,13 +4,17 @@
 <div class="card">
   <h2>Usuarios</h2>
   <p class="ayuda">Cada socio entra con su propio usuario. Los socios registran gastos, suben comprobantes y ven los reportes. Los administradores además importan, capturan reservas y cambian ajustes.</p>
+  <p class="ayuda">“Tope al mes”: lo máximo que cada socio debería cargar al mes en gastos que no son del negocio con tarjetas o cuentas del negocio. Vacío = sin tope.</p>
+  <form method="post" action="{{ route('ajustes.limites') }}" id="formLimites">@csrf</form>
   <table class="tabla">
-    <tr><th>Nombre</th><th>Usuario</th><th>Tipo</th><th></th></tr>
+    <tr><th>Nombre</th><th>Usuario</th><th>Tipo</th><th>Tope al mes</th><th></th></tr>
     @foreach ($usuarios as $u)
       <tr><td>{{ $u->name }}</td><td>{{ $u->usuario }}</td><td>{{ $u->admin ? 'Administrador' : 'Socio' }}</td>
+        <td><input type="number" step="0.01" min="0" name="limites[{{ $u->id }}]" value="{{ $u->limite_mensual }}" placeholder="Sin tope" form="formLimites" style="width:120px"></td>
         <td>@unless ($u->is(auth()->user()))<form method="post" action="{{ route('ajustes.usuarios.destroy', $u) }}" class="inline" data-confirmar="¿Borrar a {{ $u->name }}? Sus gastos se conservan.">@csrf @method('delete')<button class="link">Borrar</button></form>@endunless</td></tr>
     @endforeach
   </table>
+  <button form="formLimites" style="margin-top:10px">Guardar topes</button>
   <form method="post" action="{{ route('ajustes.usuarios') }}" class="fila" style="margin-top:12px">
     @csrf
     <input name="name" placeholder="Nombre" required>
@@ -40,11 +44,12 @@
   <form method="post" action="{{ route('ajustes.cuentas') }}">
     @csrf
     <table class="tabla">
-      <tr><th>Nombre</th><th>Tipo</th><th>Saldo / deuda inicial</th><th>Al día</th><th>Recibe Airbnb</th></tr>
+      <tr><th>Nombre</th><th>Tipo</th><th>La usa</th><th>Saldo / deuda inicial</th><th>Al día</th><th>Recibe Airbnb</th></tr>
       @foreach ($cuentas as $c)
         <tr>
           <td><input name="cuentas[{{ $c->id }}][nombre]" value="{{ $c->nombre }}" required></td>
           <td>{{ \App\Models\Cuenta::TIPOS[$c->tipo] ?? $c->tipo }}</td>
+          <td><select name="cuentas[{{ $c->id }}][user_id]"><option value="">Nadie en especial</option>@foreach ($usuarios as $u)<option value="{{ $u->id }}" @selected($c->user_id === $u->id)>{{ $u->name }}</option>@endforeach</select></td>
           <td><input type="number" step="0.01" name="cuentas[{{ $c->id }}][saldo]" value="{{ $c->esCredito() ? abs($c->saldo_inicial) : $c->saldo_inicial }}" required></td>
           <td><input type="date" name="cuentas[{{ $c->id }}][fecha_saldo]" value="{{ $c->fecha_saldo->toDateString() }}" required></td>
           <td>@unless ($c->esCredito())<input type="radio" name="recibe_airbnb" value="{{ $c->id }}" @checked($c->recibe_airbnb)>@endunless</td>
@@ -57,6 +62,7 @@
     @csrf
     <input name="nombre" placeholder="Nueva cuenta" required>
     <select name="tipo">@foreach (\App\Models\Cuenta::TIPOS as $k => $t)<option value="{{ $k }}">{{ $t }}</option>@endforeach</select>
+    <select name="user_id"><option value="">La usa: nadie en especial</option>@foreach ($usuarios as $u)<option value="{{ $u->id }}">La usa: {{ $u->name }}</option>@endforeach</select>
     <input type="number" step="0.01" name="saldo" placeholder="Saldo / deuda" required>
     <input type="date" name="fecha_saldo" value="{{ now()->toDateString() }}" required>
     <button>Agregar cuenta</button>

@@ -212,4 +212,34 @@ class AccesoTest extends TestCase
         $this->assertStringNotContainsString('viejo-ana', $csv);
         $this->assertStringNotContainsString('luz-oscar', $csv);
     }
+
+    public function test_socio_con_tarjeta_del_negocio_le_debe_lo_personal_y_aviso_de_tope(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $ana = User::factory()->create(['name' => 'Ana', 'limite_mensual' => 1000]);
+        $tarjeta = \App\Models\Cuenta::create(['nombre' => 'Crédito Ana', 'tipo' => 'credito', 'fecha_saldo' => '2026-01-01', 'user_id' => $ana->id]);
+        $hoy = now()->toDateString();
+
+        // Su tarjeta sale como opción por defecto en el formulario.
+        $this->actingAs($ana)->get('/gastos')->assertSee('<option value="'.$tarjeta->id.'" selected', false);
+
+        // Gasto del negocio: no debe nada. Gasto personal con la tarjeta del negocio: lo debe.
+        $this->actingAs($ana)->post('/gastos', ['fecha' => $hoy, 'monto' => 700, 'categoria' => 'Gasolina', 'cuenta_id' => $tarjeta->id]);
+        $this->actingAs($ana)->post('/gastos', ['fecha' => $hoy, 'monto' => 600, 'categoria' => 'Otros', 'personal' => '1', 'cuenta_id' => $tarjeta->id]);
+        $this->actingAs($ana)->post('/gastos', ['fecha' => $hoy, 'monto' => 500, 'categoria' => 'Otros', 'personal' => '1', 'cuenta_id' => $tarjeta->id])
+            ->assertSessionHas('ok', fn ($m) => str_contains($m, 'tope'));
+        $f = new \App\Services\Finanzas;
+        $this->assertEqualsWithDelta(1100, $f->nosDeben()[0]['monto'], 0.01);
+        $this->assertSame([], $f->porReembolsar());
+
+        // Ana repone 1,000 al débito: debe 100 y el débito sube.
+        $debito = \App\Models\Cuenta::where('tipo', 'debito')->first();
+        $antes = collect($f->flujo()['cuentas'])->firstWhere('id', $debito->id)['saldo'];
+        $this->actingAs($admin)->post('/abonos', ['fecha' => $hoy, 'monto' => 1000, 'cuenta_id' => $debito->id, 'user_id' => $ana->id])->assertSessionHasNoErrors();
+        $this->assertEqualsWithDelta(100, $f->nosDeben()[0]['monto'], 0.01);
+        $this->assertEqualsWithDelta($antes + 1000, collect($f->flujo()['cuentas'])->firstWhere('id', $debito->id)['saldo'], 0.01);
+        $this->actingAs($admin)->get('/gastos')->assertSee('Pasó su tope')->assertSee('Le debe al negocio hoy');
+        $this->actingAs($admin)->get('/flujo')->assertOk()->assertSee('Ana le debe al negocio');
+        $this->actingAs($ana)->post('/abonos', ['fecha' => $hoy, 'monto' => 1, 'cuenta_id' => $debito->id, 'user_id' => $ana->id])->assertForbidden();
+    }
 }

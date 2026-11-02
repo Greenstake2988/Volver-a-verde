@@ -8,6 +8,9 @@
   <div class="kpi"><div class="t">Entró este mes</div><div class="v pos">{{ dinero($este['entradas']) }}</div></div>
   <div class="kpi"><div class="t">Salió este mes</div><div class="v neg">{{ dinero($este['salidas']) }}</div><div class="s">incluye compras con tarjeta</div></div>
   <div class="kpi"><div class="t">Por cobrar</div><div class="v">{{ dinero($f['por_cobrar']) }}</div><div class="s">reservas futuras</div></div>
+  @if ($f['total_nos_deben'] > 0)
+    <div class="kpi"><div class="t">Socios le deben al negocio</div><div class="v">{{ dinero($f['total_nos_deben']) }}</div><div class="s">gastos personales con tarjetas del negocio</div></div>
+  @endif
 </div>
 
 <div class="cuentas">
@@ -22,6 +25,9 @@
         <div class="s">saldo desde el {{ $c['fecha_saldo'] }}</div>
       @endif
     </div>
+  @endforeach
+  @foreach ($f['nos_deben'] as $p)
+    <div class="kpi"><div class="t">{{ $p['nombre'] }} le debe al negocio</div><div class="v">{{ dinero($p['monto']) }}</div><div class="s">gastos personales con cuentas del negocio</div></div>
   @endforeach
   @foreach ($f['por_reembolsar'] as $p)
     <div class="kpi"><div class="t">Por reembolsar a {{ $p['nombre'] }}</div><div class="v neg">{{ dinero($p['monto']) }}</div><div class="s">pagó con su dinero</div></div>
@@ -43,6 +49,24 @@
     </form>
   </div>
   <div class="card">
+    <h2>Un socio paga al negocio</h2>
+    <p class="ayuda">Cuando un socio repone lo que cargó de gastos personales a una tarjeta o cuenta del negocio.</p>
+    <form method="post" action="{{ route('abonos.store') }}" class="fila">
+      @csrf
+      <input type="date" name="fecha" value="{{ now()->toDateString() }}" required>
+      <select name="user_id">
+        @foreach ($usuarios as $u)
+          @php($debe = collect($f['nos_deben'])->firstWhere('user_id', $u->id))
+          <option value="{{ $u->id }}">{{ $u->name }}{{ $debe ? ' (debe '.dinero($debe['monto']).')' : '' }}</option>
+        @endforeach
+      </select>
+      <input type="number" step="0.01" min="0.01" name="monto" placeholder="Monto" required>
+      <label>A <select name="cuenta_id">@foreach ($cuentas as $c)<option value="{{ $c->id }}">{{ $c->nombre }}</option>@endforeach</select></label>
+      <button>Registrar pago</button>
+    </form>
+  </div>
+  @if ($f['por_reembolsar'])
+  <div class="card">
     <h2>Reembolsar a un socio</h2>
     <p class="ayuda">Cuando le devuelves a un socio lo que pagó con su dinero.</p>
     <form method="post" action="{{ route('reembolsos.store') }}" class="fila">
@@ -59,6 +83,7 @@
       <button>Registrar reembolso</button>
     </form>
   </div>
+  @endif
 </div>
 @endcan
 

@@ -75,6 +75,22 @@ class PanelController extends Controller
         return back()->with('ok', 'Reembolso registrado.');
     }
 
+    /** Un socio le paga al negocio lo que cargó de gastos personales a una tarjeta del negocio. */
+    public function guardarAbono(Request $request)
+    {
+        $d = $request->validate([
+            'fecha' => 'required|date',
+            'monto' => 'required|numeric|min:0.01',
+            'cuenta_id' => 'required|exists:cuentas,id',
+            'user_id' => 'required|exists:users,id',
+            'concepto' => 'nullable|string|max:200',
+        ]);
+        $socio = User::find($d['user_id']);
+        Movimiento::create($d + ['concepto' => '']);
+
+        return back()->with('ok', "Pago de {$socio->name} registrado.");
+    }
+
     public function guardarMovimiento(Request $request)
     {
         Movimiento::create($request->validate([
