@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Ajuste;
 use App\Models\Cuarto;
+use App\Models\Cuenta;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -16,18 +16,42 @@ class AjustesController extends Controller
         return view('ajustes', [
             'usuarios' => User::orderBy('id')->get(),
             'cuartos' => Cuarto::orderBy('id')->get(),
-            'saldo' => Ajuste::valor('saldo_inicial', '0'),
-            'fechaSaldo' => Ajuste::valor('fecha_saldo'),
+            'cuentas' => Cuenta::orderBy('id')->get(),
         ]);
     }
 
-    public function saldo(Request $request)
+    public function cuentas(Request $request)
     {
-        $d = $request->validate(['saldo_inicial' => 'required|numeric', 'fecha_saldo' => 'required|date']);
-        Ajuste::guardar('saldo_inicial', (string) $d['saldo_inicial']);
-        Ajuste::guardar('fecha_saldo', $d['fecha_saldo']);
+        $d = $request->validate([
+            'cuentas' => 'required|array',
+            'cuentas.*.nombre' => 'required|string|max:60',
+            'cuentas.*.saldo' => 'required|numeric',
+            'cuentas.*.fecha_saldo' => 'required|date',
+            'recibe_airbnb' => 'nullable|exists:cuentas,id',
+        ]);
+        foreach ($d['cuentas'] as $id => $c) {
+            $cuenta = Cuenta::findOrFail($id);
+            // En crédito se captura lo que se debe (positivo) y se guarda como saldo negativo.
+            $saldo = $cuenta->esCredito() ? -abs((float) $c['saldo']) : (float) $c['saldo'];
+            $cuenta->update(['nombre' => $c['nombre'], 'saldo_inicial' => $saldo, 'fecha_saldo' => $c['fecha_saldo'],
+                'recibe_airbnb' => (int) ($d['recibe_airbnb'] ?? 0) === $cuenta->id]);
+        }
 
-        return back()->with('ok', 'Saldo guardado.');
+        return back()->with('ok', 'Cuentas guardadas.');
+    }
+
+    public function crearCuenta(Request $request)
+    {
+        $d = $request->validate([
+            'nombre' => 'required|string|max:60',
+            'tipo' => 'required|in:'.implode(',', array_keys(Cuenta::TIPOS)),
+            'saldo' => 'required|numeric',
+            'fecha_saldo' => 'required|date',
+        ]);
+        Cuenta::create(['nombre' => $d['nombre'], 'tipo' => $d['tipo'], 'fecha_saldo' => $d['fecha_saldo'],
+            'saldo_inicial' => $d['tipo'] === 'credito' ? -abs((float) $d['saldo']) : (float) $d['saldo']]);
+
+        return back()->with('ok', "Cuenta {$d['nombre']} creada.");
     }
 
     public function cuartos(Request $request)

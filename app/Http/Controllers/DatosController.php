@@ -58,13 +58,13 @@ class DatosController extends Controller
                     });
             } else {
                 fputcsv($out, ['Fecha', 'Categoría', 'Cuarto', 'Descripción', 'Monto', 'Tiene factura',
-                    'Del negocio', 'Pagado desde la cuenta del negocio', 'Pagó', 'Comprobantes'], ',', '"', '');
-                Gasto::with(['cuarto', 'user'])->withCount('comprobantes')
+                    'Del negocio', 'Pagado con', 'Pagó', 'Comprobantes'], ',', '"', '');
+                Gasto::with(['cuarto', 'cuenta', 'user'])->withCount('comprobantes')
                     ->whereBetween('fecha', [$datos['desde'], $datos['hasta']])->orderBy('fecha')
                     ->each(function (Gasto $g) use ($out) {
                         fputcsv($out, [$g->fecha->toDateString(), $g->categoria,
                             $g->personal ? '' : ($g->cuarto->nombre ?? 'General'), $g->descripcion, self::n($g->monto),
-                            $g->factura ? 'Sí' : 'No', $g->personal ? 'No' : 'Sí', $g->de_la_cuenta ? 'Sí' : 'No',
+                            $g->factura ? 'Sí' : 'No', $g->personal ? 'No' : 'Sí', $g->cuenta->nombre ?? 'Dinero propio (por reembolsar)',
                             $g->user->name ?? '', $g->comprobantes_count], ',', '"', '');
                     });
             }

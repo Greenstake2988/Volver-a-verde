@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\Fecha;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -15,8 +16,8 @@ class Reserva extends Model
     protected function casts(): array
     {
         return [
-            'check_in' => 'date',
-            'fecha_pago' => 'date',
+            'check_in' => Fecha::class,
+            'fecha_pago' => Fecha::class,
             'noches' => 'integer',
             'bruto' => 'float',
             'comision' => 'float',

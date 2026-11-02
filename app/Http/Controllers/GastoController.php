@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Comprobante;
 use App\Models\Cuarto;
+use App\Models\Cuenta;
 use App\Models\Gasto;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -19,7 +20,7 @@ class GastoController extends Controller
     public function index(Request $request)
     {
         $filtro = $request->query('filtro', 'todos');
-        $q = Gasto::with(['cuarto', 'user', 'capturadoPor', 'comprobantes'])->orderByDesc('fecha')->orderByDesc('id');
+        $q = Gasto::with(['cuarto', 'cuenta', 'user', 'capturadoPor', 'comprobantes'])->orderByDesc('fecha')->orderByDesc('id');
         match ($filtro) {
             'negocio' => $q->where('personal', false),
             'personal' => $q->where('personal', true),
@@ -32,6 +33,7 @@ class GastoController extends Controller
         return view('gastos', [
             'gastos' => $q->paginate(100)->withQueryString(),
             'cuartos' => Cuarto::orderBy('id')->get(),
+            'cuentas' => Cuenta::orderBy('id')->get(),
             'usuarios' => $request->user()->admin ? User::orderBy('name')->get() : collect(),
             'filtro' => $filtro,
         ]);
@@ -48,6 +50,7 @@ class GastoController extends Controller
             'comprobantes' => 'nullable|array|max:5',
             'comprobantes.*' => self::REGLA_ARCHIVO,
             'user_id' => 'nullable|exists:users,id',
+            'cuenta_id' => 'nullable|exists:cuentas,id',   // vacío = dinero propio, por reembolsar
         ]);
         // Un administrador puede registrar el gasto a nombre de otro socio; un socio, solo a su nombre.
         $duenoId = $request->user()->admin && ! empty($datos['user_id']) ? (int) $datos['user_id'] : $request->user()->id;
@@ -59,7 +62,7 @@ class GastoController extends Controller
             'descripcion' => $datos['descripcion'] ?? '',
             'personal' => $request->boolean('personal'),
             'factura' => $request->boolean('factura'),
-            'de_la_cuenta' => $request->boolean('de_la_cuenta'),
+            'cuenta_id' => $datos['cuenta_id'] ?? null,
             'user_id' => $duenoId,
             'capturado_por' => $request->user()->id,
         ]);

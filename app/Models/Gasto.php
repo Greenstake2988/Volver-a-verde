@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\Fecha;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,16 +19,15 @@ class Gasto extends Model
     protected $table = 'gastos';
 
     protected $fillable = ['fecha', 'monto', 'categoria', 'cuarto_id', 'descripcion',
-        'personal', 'factura', 'de_la_cuenta', 'user_id', 'capturado_por'];
+        'personal', 'factura', 'cuenta_id', 'user_id', 'capturado_por'];
 
     protected function casts(): array
     {
         return [
-            'fecha' => 'date',
+            'fecha' => Fecha::class,
             'monto' => 'float',
             'personal' => 'boolean',
             'factura' => 'boolean',
-            'de_la_cuenta' => 'boolean',
         ];
     }
 
@@ -39,6 +39,12 @@ class Gasto extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** Vacía = lo pagó el socio con su dinero y queda por reembolsar. */
+    public function cuenta(): BelongsTo
+    {
+        return $this->belongsTo(Cuenta::class);
     }
 
     public function capturadoPor(): BelongsTo

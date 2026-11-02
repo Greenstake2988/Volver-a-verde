@@ -24,13 +24,22 @@
     @endcan
     <label class="check"><input type="checkbox" name="factura" value="1" @checked(old('factura'))> Tiene factura</label>
     <label class="check"><input type="checkbox" name="personal" value="1" @checked(old('personal'))> No es del negocio</label>
-    <label class="check"><input type="checkbox" name="de_la_cuenta" value="1" @checked(old('de_la_cuenta', true))> Pagado desde la cuenta del negocio</label>
+    {{-- Por defecto: el admin paga con la primera cuenta; un socio, con su dinero. --}}
+    @php($pagoDefault = old('cuenta_id', auth()->user()->admin ? (string) $cuentas->first()?->id : ''))
+    <label>¿Con qué se pagó?
+      <select name="cuenta_id">
+        @foreach ($cuentas as $c)
+          <option value="{{ $c->id }}" @selected((string) $pagoDefault === (string) $c->id)>{{ $c->nombre }}</option>
+        @endforeach
+        <option value="" @selected((string) $pagoDefault === '')>Dinero propio (por reembolsar)</option>
+      </select>
+    </label>
     <label class="archivo">📎 Comprobante (foto, PDF o XML)
       <input type="file" name="comprobantes[]" accept="image/*,application/pdf,.xml" multiple>
     </label>
     <button>Guardar</button>
   </form>
-  <p class="ayuda">“No es del negocio”: el gasto queda registrado y sale en el reporte para el contador, pero no se resta en la utilidad ni en la rentabilidad de los cuartos. Si además lo pagaste desde la cuenta del negocio, sí baja el saldo en el flujo de efectivo. Qué facturas se pueden deducir lo decide el contador.</p>
+  <p class="ayuda">“No es del negocio”: el gasto queda registrado y sale en el reporte para el contador, pero no se resta en la utilidad ni en la rentabilidad de los cuartos. Si lo pagaste con una cuenta del negocio, sí mueve el saldo de esa cuenta en el flujo de efectivo. Qué facturas se pueden deducir lo decide el contador.</p>
 </div>
 
 <div class="card">
@@ -62,7 +71,7 @@
         <td>
           @if ($g->factura)<span class="tag">Factura</span>@endif
           @if ($g->personal)<span class="tag gris">No es del negocio</span>@endif
-          @unless ($g->de_la_cuenta)<span class="tag gris">Otra cuenta</span>@endunless
+          @if ($g->cuenta)<span class="tag gris">{{ $g->cuenta->nombre }}</span>@else<span class="tag ambar">Por reembolsar</span>@endif
         </td>
         <td class="n">{{ dinero($g->monto) }}</td>
         <td>@if ($puede)<form method="post" action="{{ route('gastos.destroy', $g) }}" class="inline" data-confirmar="¿Borrar este gasto y sus comprobantes?">@csrf @method('delete')<button class="link">Borrar</button></form>@endif</td>

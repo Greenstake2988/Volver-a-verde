@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Cuarto;
+use App\Models\Cuenta;
 use App\Models\Gasto;
 use App\Models\Reserva;
 use Carbon\CarbonImmutable;
@@ -167,10 +168,25 @@ class Importador
         return ['nuevas' => $nuevas, 'actualizadas' => $actualizadas, 'filas' => count($filas)];
     }
 
-    /** Columnas: fecha, monto, categoria y opcionales descripcion, cuarto, factura, personal, de la cuenta. */
+    /** Columnas: fecha, monto, categoria y opcionales descripcion, cuarto, factura, personal, pagado con. */
     public function gastos(string $texto, ?int $userId = null): array
     {
         $cuartos = Cuarto::all()->mapWithKeys(fn ($c) => [self::norm($c->nombre) => $c->id]);
+        $cuentas = Cuenta::orderBy('id')->get();
+        $porDefecto = $cuentas->firstWhere('tipo', 'debito')?->id;
+        // "Pagado con": nombre de la cuenta, o palabras como "credito", "debito", "propio"/"efectivo".
+        $buscarCuenta = function (string $v) use ($cuentas, $porDefecto) {
+            $v = self::norm($v);
+            if ($v === '') {
+                return $porDefecto;
+            }
+            if (in_array($v, ['propio', 'dinero propio', 'efectivo', 'personal', 'no'], true)) {
+                return null;
+            }
+            return $cuentas->first(fn ($c) => self::norm($c->nombre) === $v)?->id
+                ?? $cuentas->first(fn ($c) => str_contains($v, $c->tipo))?->id
+                ?? $porDefecto;
+        };
         $cats = collect(Gasto::CATEGORIAS)->mapWithKeys(fn ($c) => [self::norm($c) => $c]);
         $si = fn ($v) => in_array(self::norm($v), ['si', 's', 'x', '1', 'yes', 'true'], true);
         $n = $omitidos = 0;
@@ -183,7 +199,6 @@ class Importador
                 continue;
             }
             $cat = self::col($f, 'categoria', 'tipo', 'concepto');
-            $cuenta = self::col($f, 'de la cuenta', 'cuenta del negocio');
             Gasto::create([
                 'fecha' => $fecha,
                 'monto' => $monto,
@@ -192,7 +207,7 @@ class Importador
                 'descripcion' => self::col($f, 'descripcion', 'nota', 'notas', 'detalle'),
                 'factura' => $si(self::col($f, 'factura', 'facturado', 'cfdi')),
                 'personal' => $si(self::col($f, 'personal', 'no es del negocio')),
-                'de_la_cuenta' => $cuenta === '' ? true : $si($cuenta),
+                'cuenta_id' => $buscarCuenta(self::col($f, 'pagado con', 'cuenta', 'tarjeta', 'de la cuenta')),
                 'user_id' => $userId,
             ]);
             $n++;

@@ -35,11 +35,11 @@ CSV;
 
     public function test_importa_gastos_de_excel(): void
     {
-        $csv = "fecha,monto,categoria,descripcion,cuarto,factura,personal\n"
-            ."05/10/2026,\"$1,450.50\",luz,CFE,,si,\n"
-            ."18/10/2026,800,Mantenimiento,Llave,Cuarto 3,,\n"
-            ."20/10/2026,300,Otros,Doctor,,si,si\n"
-            .",5,x,sin fecha,,,\n";
+        $csv = "fecha,monto,categoria,descripcion,cuarto,factura,personal,pagado con\n"
+            ."05/10/2026,\"$1,450.50\",luz,CFE,,si,,\n"
+            ."18/10/2026,800,Mantenimiento,Llave,Cuarto 3,,,Crédito\n"
+            ."20/10/2026,300,Otros,Doctor,,si,si,propio\n"
+            .",5,x,sin fecha,,,,\n";
         $r = (new Importador)->gastos($csv);
 
         $this->assertSame(['importados' => 3, 'omitidos' => 1], $r);
@@ -49,5 +49,8 @@ CSV;
         $this->assertTrue($luz->factura);
         $this->assertSame(3, Gasto::where('descripcion', 'Llave')->sole()->cuarto_id);
         $this->assertTrue(Gasto::where('descripcion', 'Doctor')->sole()->personal);
+        $this->assertSame('debito', $luz->cuenta->tipo);
+        $this->assertSame('credito', Gasto::where('descripcion', 'Llave')->sole()->cuenta->tipo);
+        $this->assertNull(Gasto::where('descripcion', 'Doctor')->sole()->cuenta_id);
     }
 }

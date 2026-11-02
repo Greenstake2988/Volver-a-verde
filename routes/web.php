@@ -40,7 +40,10 @@ Route::middleware('auth')->group(function () {
         Route::post('/datos/airbnb', [DatosController::class, 'importarAirbnb'])->name('datos.airbnb');
         Route::post('/datos/gastos', [DatosController::class, 'importarGastos'])->name('datos.gastos');
         Route::get('/datos/exportar/{tipo}', [DatosController::class, 'exportar'])->name('datos.exportar');
-        Route::post('/ajustes/saldo', [AjustesController::class, 'saldo'])->name('ajustes.saldo');
+        Route::post('/transferencias', [PanelController::class, 'guardarTransferencia'])->name('transferencias.store');
+        Route::post('/reembolsos', [PanelController::class, 'guardarReembolso'])->name('reembolsos.store');
+        Route::post('/ajustes/cuentas', [AjustesController::class, 'cuentas'])->name('ajustes.cuentas');
+        Route::post('/ajustes/cuentas/nueva', [AjustesController::class, 'crearCuenta'])->name('ajustes.cuentas.store');
         Route::post('/ajustes/cuartos', [AjustesController::class, 'cuartos'])->name('ajustes.cuartos');
         Route::post('/ajustes/usuarios', [AjustesController::class, 'crearUsuario'])->name('ajustes.usuarios');
         Route::delete('/ajustes/usuarios/{user}', [AjustesController::class, 'borrarUsuario'])->name('ajustes.usuarios.destroy');
