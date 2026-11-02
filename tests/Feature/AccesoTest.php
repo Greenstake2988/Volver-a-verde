@@ -171,4 +171,24 @@ class AccesoTest extends TestCase
         $this->actingAs($socio)->post('/gastos', $gasto + ['comprobantes' => [$pdf]])->assertSessionHasNoErrors();
         $this->assertTrue(Gasto::sole()->factura);
     }
+
+    public function test_filtra_reservas_por_cuarto_y_fechas_y_exporta_lo_mismo(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $a = Cuarto::create(['nombre' => 'Volver a Verde 1']);
+        $b = Cuarto::create(['nombre' => 'Volver a Verde 2']);
+        Reserva::create(['cuarto_id' => $a->id, 'huesped' => 'Ana', 'check_in' => '2026-03-10', 'noches' => 2, 'bruto' => 2000, 'comision' => 300]);
+        Reserva::create(['cuarto_id' => $a->id, 'huesped' => 'Beto', 'check_in' => '2026-05-10', 'noches' => 1, 'bruto' => 1000]);
+        Reserva::create(['cuarto_id' => $b->id, 'huesped' => 'Caro', 'check_in' => '2026-03-15', 'noches' => 3, 'bruto' => 3000]);
+
+        $filtro = ['cuarto_id' => $a->id, 'desde' => '2026-03-01', 'hasta' => '2026-03-31'];
+        $this->actingAs($admin)->get('/reservas?'.http_build_query($filtro))
+            ->assertOk()->assertSee('Ana')->assertDontSee('Beto')->assertDontSee('Caro')
+            ->assertSee(dinero(1700));   // neto de lo filtrado
+
+        $csv = $this->actingAs($admin)->get('/datos/exportar/reservas?'.http_build_query($filtro))->streamedContent();
+        $this->assertStringContainsString('Ana', $csv);
+        $this->assertStringNotContainsString('Caro', $csv);
+        $this->assertStringNotContainsString('Beto', $csv);
+    }
 }

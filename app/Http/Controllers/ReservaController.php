@@ -8,12 +8,35 @@ use Illuminate\Http\Request;
 
 class ReservaController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return view('reservas', [
-            'reservas' => Reserva::with('cuarto')->orderByDesc('check_in')->paginate(100),
-            'cuartos' => Cuarto::activos()->orderBy('id')->get(),
+        $f = $request->validate([
+            'cuarto_id' => 'nullable|integer',
+            'desde' => 'nullable|date',
+            'hasta' => 'nullable|date',
         ]);
+        $q = self::filtrar(Reserva::query(), $f);
+        // Totales de todo lo filtrado (no solo de la página que se ve).
+        $t = (clone $q)->selectRaw('count(*) as reservas, coalesce(sum(noches),0) as noches, coalesce(sum(bruto),0) as bruto,
+            coalesce(sum(iva_trasladado),0) as iva, coalesce(sum(comision),0) as comision, coalesce(sum(impuestos),0) as impuestos,
+            coalesce(sum(ish),0) as ish')->first();
+
+        return view('reservas', [
+            'reservas' => $q->with('cuarto')->orderByDesc('check_in')->paginate(100)->withQueryString(),
+            'cuartos' => Cuarto::activos()->orderBy('id')->get(),
+            'todosCuartos' => Cuarto::orderBy('id')->get(),
+            'f' => $f + ['cuarto_id' => null, 'desde' => null, 'hasta' => null],
+            'tot' => $t,
+            'neto' => round($t->bruto + $t->iva - $t->comision - $t->impuestos, 2),
+        ]);
+    }
+
+    /** Filtro por cuarto y por fecha de check-in (como los informes de Airbnb). */
+    public static function filtrar($q, array $f)
+    {
+        return $q->when($f['cuarto_id'] ?? null, fn ($q, $id) => $q->where('cuarto_id', $id))
+            ->when($f['desde'] ?? null, fn ($q, $d) => $q->where('check_in', '>=', substr($d, 0, 10)))
+            ->when($f['hasta'] ?? null, fn ($q, $d) => $q->where('check_in', '<=', substr($d, 0, 10)));
     }
 
     public function store(Request $request)
