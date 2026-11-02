@@ -63,6 +63,24 @@ class AccesoTest extends TestCase
         $this->get('/gastos')->assertOk()->assertSee('Camioneta');
     }
 
+    public function test_admin_registra_gasto_a_nombre_de_un_socio_y_el_socio_no_puede(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $socio = User::factory()->create();
+        $otro = User::factory()->create();
+        $gasto = ['fecha' => now()->toDateString(), 'monto' => 500, 'categoria' => 'Gasolina'];
+
+        $this->actingAs($admin)->post('/gastos', $gasto + ['user_id' => $socio->id])->assertSessionHasNoErrors();
+        $g = Gasto::latest('id')->first();
+        $this->assertSame($socio->id, $g->user_id);
+        $this->assertSame($admin->id, $g->capturado_por);
+        $this->actingAs($socio)->get('/gastos?filtro=mios')->assertSee('capturó '.$admin->name);
+
+        // Un socio que intenta registrar a nombre de otro queda a su propio nombre.
+        $this->actingAs($socio)->post('/gastos', $gasto + ['user_id' => $otro->id])->assertSessionHasNoErrors();
+        $this->assertSame($socio->id, Gasto::latest('id')->first()->user_id);
+    }
+
     public function test_rechaza_archivos_que_no_son_comprobantes(): void
     {
         Storage::fake('local');
