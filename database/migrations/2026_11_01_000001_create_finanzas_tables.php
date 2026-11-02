@@ -71,14 +71,11 @@ return new class extends Migration
             $table->string('valor')->nullable();
         });
 
-        // El negocio tiene 5 cuartos; los nombres se cambian en Ajustes.
+        // Los cuartos se crean en Ajustes o solos al importar el CSV de Airbnb (uno por anuncio).
         $ahora = now();
-        foreach (range(1, 5) as $i) {
-            DB::table('cuartos')->insert(['nombre' => "Cuarto {$i}", 'created_at' => $ahora, 'updated_at' => $ahora]);
-        }
         DB::table('ajustes')->insert([
             ['clave' => 'saldo_inicial', 'valor' => '0'],
-            ['clave' => 'fecha_saldo', 'valor' => $ahora->startOfMonth()->toDateString()],
+            ['clave' => 'fecha_saldo', 'valor' => $ahora->startOfYear()->toDateString()],
         ]);
     }
 

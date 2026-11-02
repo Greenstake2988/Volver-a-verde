@@ -109,9 +109,16 @@ class Importador
             $libre = $libres->first(fn ($c) => preg_match('/\b'.$m[1].'$/', trim($c->nombre)));
         }
         $libre ??= $libres->first();
-        $libre?->update(['anuncio_airbnb' => $anuncio]);
+        if ($libre) {
+            $libre->update(['anuncio_airbnb' => $anuncio]);
 
-        return $libre?->id;
+            return $libre->id;
+        }
+
+        // Anuncio nuevo: se crea su cuarto con el nombre corto ("Volver a Verde 4| Loft..." → "Volver a Verde 4").
+        $nombre = trim(preg_split('/\s*(\||\s-\s)\s*/', $anuncio)[0]) ?: $anuncio;
+
+        return Cuarto::create(['nombre' => Str::limit($nombre, 60, ''), 'anuncio_airbnb' => $anuncio])->id;
     }
 
     /**
@@ -184,6 +191,13 @@ class Importador
                 $r['bruto'] += $monto;
             }
             unset($r);
+        }
+
+        // Primero los anuncios en orden ("Volver a Verde 1", "2"...) para que los cuartos nuevos queden ordenados.
+        $anuncios = array_unique(array_filter(array_column($reservas, 'anuncio')));
+        natcasesort($anuncios);
+        foreach ($anuncios as $anuncio) {
+            $this->cuartoPorAnuncio($anuncio);
         }
 
         $nuevas = $actualizadas = $omitidas = 0;

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Cuarto;
 use App\Models\Cuenta;
 use App\Models\Gasto;
 use App\Models\Reserva;
@@ -15,6 +16,14 @@ use Tests\TestCase;
 class FinanzasTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        foreach (range(1, 5) as $i) {
+            Cuarto::create(['nombre' => "Cuarto {$i}"]);
+        }
+    }
 
     private function d(string $s): CarbonImmutable
     {

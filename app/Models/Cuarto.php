@@ -9,7 +9,19 @@ class Cuarto extends Model
 {
     protected $table = 'cuartos';
 
-    protected $fillable = ['nombre', 'anuncio_airbnb'];
+    protected $fillable = ['nombre', 'anuncio_airbnb', 'activo'];
+
+    protected $casts = ['activo' => 'boolean'];
+
+    public function scopeActivos($q)
+    {
+        return $q->where('activo', true);
+    }
+
+    public function gastos(): HasMany
+    {
+        return $this->hasMany(Gasto::class);
+    }
 
     public function reservas(): HasMany
     {

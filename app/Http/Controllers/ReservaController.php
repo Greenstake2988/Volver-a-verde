@@ -12,7 +12,7 @@ class ReservaController extends Controller
     {
         return view('reservas', [
             'reservas' => Reserva::with('cuarto')->orderByDesc('check_in')->paginate(100),
-            'cuartos' => Cuarto::orderBy('id')->get(),
+            'cuartos' => Cuarto::activos()->orderBy('id')->get(),
         ]);
     }
 

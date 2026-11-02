@@ -26,8 +26,10 @@ class Finanzas
 
     public function resumen(CarbonImmutable $desde, CarbonImmutable $hasta): array
     {
+        // Los cuartos desactivados no cuentan para la ocupación ni reciben gastos generales,
+        // pero sí salen en la tabla si tuvieron reservas o gastos en el periodo.
         $cuartos = Cuarto::orderBy('id')->get();
-        $nCuartos = max(1, $cuartos->count());
+        $nCuartos = max(1, $cuartos->where('activo', true)->count());
         $dias = (int) $desde->diffInDays($hasta) + 1;
 
         $porCuarto = [];
@@ -80,8 +82,10 @@ class Finanzas
             }
         }
 
+        $activos = $cuartos->where('activo', true)->pluck('id')->flip();
+        $porCuarto = array_filter($porCuarto, fn ($pc) => isset($activos[$pc['id']]) || $pc['noches'] || $pc['gastos_directos']);
         foreach ($porCuarto as &$pc) {
-            $pc['gastos_generales'] = $generales / $nCuartos;
+            $pc['gastos_generales'] = isset($activos[$pc['id']]) ? $generales / $nCuartos : 0.0;
             $pc['utilidad'] = $pc['neto'] - $pc['gastos_directos'] - $pc['gastos_generales'];
             $pc['ocupacion'] = $dias ? $pc['noches'] / $dias : 0;
             $pc['tarifa_promedio'] = $pc['noches'] ? $pc['bruto'] / $pc['noches'] : 0;

@@ -45,6 +45,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/ajustes/cuentas', [AjustesController::class, 'cuentas'])->name('ajustes.cuentas');
         Route::post('/ajustes/cuentas/nueva', [AjustesController::class, 'crearCuenta'])->name('ajustes.cuentas.store');
         Route::post('/ajustes/cuartos', [AjustesController::class, 'cuartos'])->name('ajustes.cuartos');
+        Route::post('/ajustes/cuartos/nuevo', [AjustesController::class, 'crearCuarto'])->name('ajustes.cuartos.store');
+        Route::delete('/ajustes/cuartos/{cuarto}', [AjustesController::class, 'borrarCuarto'])->name('ajustes.cuartos.destroy');
         Route::post('/ajustes/usuarios', [AjustesController::class, 'crearUsuario'])->name('ajustes.usuarios');
         Route::delete('/ajustes/usuarios/{user}', [AjustesController::class, 'borrarUsuario'])->name('ajustes.usuarios.destroy');
     });

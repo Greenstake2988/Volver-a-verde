@@ -32,7 +32,7 @@ class GastoController extends Controller
 
         return view('gastos', [
             'gastos' => $q->paginate(100)->withQueryString(),
-            'cuartos' => Cuarto::orderBy('id')->get(),
+            'cuartos' => Cuarto::activos()->orderBy('id')->get(),
             'cuentas' => Cuenta::orderBy('id')->get(),
             'usuarios' => $request->user()->admin ? User::orderBy('name')->get() : collect(),
             'filtro' => $filtro,
@@ -47,11 +47,12 @@ class GastoController extends Controller
             'categoria' => ['required', Rule::in(Gasto::CATEGORIAS)],
             'cuarto_id' => 'nullable|exists:cuartos,id',
             'descripcion' => 'nullable|string|max:200',
-            'comprobantes' => 'nullable|array|max:5',
+            // Si dice que tiene factura, hay que subirla (PDF o XML del CFDI, o foto).
+            'comprobantes' => 'required_if_accepted:factura|nullable|array|max:5',
             'comprobantes.*' => self::REGLA_ARCHIVO,
             'user_id' => 'nullable|exists:users,id',
             'cuenta_id' => 'nullable|exists:cuentas,id',   // vacío = dinero propio, por reembolsar
-        ]);
+        ], ['comprobantes.required_if_accepted' => 'Si el gasto tiene factura, sube la factura (PDF, XML o foto).']);
         // Un administrador puede registrar el gasto a nombre de otro socio; un socio, solo a su nombre.
         $duenoId = $request->user()->admin && ! empty($datos['user_id']) ? (int) $datos['user_id'] : $request->user()->id;
         $gasto = Gasto::create([

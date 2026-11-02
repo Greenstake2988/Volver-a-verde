@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Cuarto;
 use App\Models\Cuenta;
 use App\Models\Gasto;
 use App\Models\Reserva;
@@ -18,11 +19,15 @@ class DemoSeeder extends Seeder
 
             return;
         }
+        foreach (range(Cuarto::count() + 1, 5) as $i) {
+            Cuarto::create(['nombre' => "Cuarto {$i}"]);
+        }
         mt_srand(7);
         $hoy = CarbonImmutable::today();
         $inicio = $hoy->subMonthsNoOverflow(5)->startOfMonth();
-        $tarifas = [1 => 650, 2 => 700, 3 => 800, 4 => 550, 5 => 900];
-        $demanda = [1 => 0.75, 2 => 0.65, 3 => 0.8, 4 => 0.4, 5 => 0.6];
+        $ids = Cuarto::orderBy('id')->limit(5)->pluck('id')->all();
+        $tarifas = array_combine($ids, [650, 700, 800, 550, 900]);
+        $demanda = array_combine($ids, [0.75, 0.65, 0.8, 0.4, 0.6]);
         $huespedes = ['Ana', 'Luis', 'Marta', 'John', 'Sofía', 'Pedro'];
         $k = 0;
         foreach ($tarifas as $cuarto => $tarifa) {

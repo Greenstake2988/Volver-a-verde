@@ -68,9 +68,10 @@ CSV;
         $this->assertSame('2026-11-01', $a->fecha_salida->toDateString());
         $this->assertSame('airbnb', $a->origen);
 
-        // "Volver a Verde 3" va al Cuarto 3 aunque aparezca antes que el 1.
-        $this->assertSame(3, $a->cuarto_id);
-        $this->assertSame(1, Reserva::where('codigo', 'HMBBB2')->sole()->cuarto_id);
+        // Sin cuartos dados de alta, se crea uno por anuncio con el nombre corto.
+        $this->assertSame('Volver a Verde 3', $a->cuarto->nombre);
+        $this->assertStringStartsWith('Volver a Verde 3', $a->cuarto->anuncio_airbnb);
+        $this->assertSame('Volver a Verde 1', Reserva::where('codigo', 'HMBBB2')->sole()->cuarto->nombre);
 
         // Cancelación: el ajuste solo, sin su reservación original en el archivo.
         $c = Reserva::where('codigo', 'HMCCC3')->sole();
@@ -86,8 +87,24 @@ CSV;
         $this->assertSame([0, 4, 0], [$r2['nuevas'], $r2['actualizadas'], $r2['depositos']]);
     }
 
+    public function test_asigna_volver_a_verde_n_al_cuarto_n_si_ya_existen(): void
+    {
+        foreach (range(1, 5) as $i) {
+            Cuarto::create(['nombre' => "Cuarto {$i}"]);
+        }
+        (new Importador)->airbnb("\u{FEFF}".self::AIRBNB_MX);
+
+        // "Volver a Verde 3" va al Cuarto 3 aunque aparezca antes que el 1, y no se crean cuartos.
+        $this->assertSame(5, Cuarto::count());
+        $this->assertSame('Cuarto 3', Reserva::where('codigo', 'HMAAA1')->sole()->cuarto->nombre);
+        $this->assertSame('Cuarto 1', Reserva::where('codigo', 'HMBBB2')->sole()->cuarto->nombre);
+    }
+
     public function test_importa_gastos_de_excel(): void
     {
+        foreach (range(1, 5) as $i) {
+            Cuarto::create(['nombre' => "Cuarto {$i}"]);
+        }
         $csv = "fecha,monto,categoria,descripcion,cuarto,factura,personal,pagado con\n"
             ."05/10/2026,\"$1,450.50\",luz,CFE,,si,,\n"
             ."18/10/2026,800,Mantenimiento,Llave,Cuarto 3,,,Crédito\n"
