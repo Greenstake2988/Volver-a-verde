@@ -20,15 +20,15 @@ class AccesoTest extends TestCase
         $this->get('/')->assertRedirect('/login');
         $this->get('/login')->assertRedirect('/primer-usuario');
 
-        $this->post('/primer-usuario', ['name' => 'Oscar', 'usuario' => 'Oscar', 'password' => 'secreto123',
-            'password_confirmation' => 'secreto123'])->assertRedirect('/ajustes');
+        $this->post('/primer-usuario', ['name' => 'Oscar', 'usuario' => 'Oscar', 'password' => 'Secreto12345',
+            'password_confirmation' => 'Secreto12345'])->assertRedirect('/ajustes');
 
         $this->assertTrue(User::where('usuario', 'oscar')->first()->admin);
         $this->assertAuthenticated();
         // Ya no se puede volver a usar.
         $this->post('/logout');
-        $this->post('/primer-usuario', ['name' => 'X', 'usuario' => 'x', 'password' => 'secreto123',
-            'password_confirmation' => 'secreto123'])->assertForbidden();
+        $this->post('/primer-usuario', ['name' => 'X', 'usuario' => 'x', 'password' => 'Secreto12345',
+            'password_confirmation' => 'Secreto12345'])->assertForbidden();
         $this->assertSame(1, User::count());
     }
 
@@ -241,5 +241,31 @@ class AccesoTest extends TestCase
         $this->actingAs($admin)->get('/gastos')->assertSee('Pasó su tope')->assertSee('Le debe al negocio hoy');
         $this->actingAs($admin)->get('/flujo')->assertOk()->assertSee('Ana le debe al negocio');
         $this->actingAs($ana)->post('/abonos', ['fecha' => $hoy, 'monto' => 1, 'cuenta_id' => $debito->id, 'user_id' => $ana->id])->assertForbidden();
+    }
+
+    public function test_contrasena_fuerte_y_cambio_obligatorio(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $this->actingAs($admin);
+
+        // Contraseña débil: no se acepta.
+        $this->post('/ajustes/usuarios', ['name' => 'Ana', 'usuario' => 'ana', 'password' => 'secreto123'])
+            ->assertSessionHasErrors('password');
+        $this->post('/ajustes/usuarios', ['name' => 'Ana', 'usuario' => 'ana', 'password' => 'Temporal12345'])
+            ->assertSessionHasNoErrors();
+
+        // Con contraseña temporal solo puede ir a Ajustes hasta cambiarla.
+        $ana = User::where('usuario', 'ana')->firstOrFail();
+        $this->assertTrue($ana->cambiar_password);
+        $this->actingAs($ana)->get('/gastos')->assertRedirect('/ajustes');
+        $this->get('/ajustes')->assertOk()->assertSee('Antes de seguir');
+
+        $this->post('/ajustes/password', ['actual' => 'Temporal12345', 'password' => 'otraclave123',
+            'password_confirmation' => 'otraclave123'])->assertSessionHasErrors('password');
+        $this->post('/ajustes/password', ['actual' => 'Temporal12345', 'password' => 'MiClaveNueva2026',
+            'password_confirmation' => 'MiClaveNueva2026'])->assertSessionHasNoErrors();
+
+        $this->assertFalse($ana->fresh()->cambiar_password);
+        $this->get('/gastos')->assertOk();
     }
 }

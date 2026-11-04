@@ -1,5 +1,8 @@
 @extends('layouts.app', ['titulo' => 'Ajustes'])
 @section('contenido')
+@if (auth()->user()->cambiar_password)
+  <div class="aviso error">Antes de seguir, cambia tu contraseña abajo en “Mi contraseña”: mínimo 12 caracteres, con mayúsculas, minúsculas y números.</div>
+@endif
 @can('admin')
 <div class="card">
   <h2>Usuarios</h2>
@@ -19,7 +22,7 @@
     @csrf
     <input name="name" placeholder="Nombre" required>
     <input name="usuario" placeholder="Usuario" autocapitalize="none" required>
-    <input name="password" type="text" placeholder="Contraseña (8+)" required minlength="8">
+    <input name="password" type="text" placeholder="Contraseña (12+, Aa1)" required minlength="12">
     <label class="check"><input type="checkbox" name="admin" value="1"> Administrador</label>
     <button>Agregar usuario</button>
   </form>
@@ -31,8 +34,8 @@
   <form method="post" action="{{ route('ajustes.password') }}" class="fila">
     @csrf
     <input type="password" name="actual" placeholder="Contraseña actual" required>
-    <input type="password" name="password" placeholder="Nueva (8+)" required minlength="8">
-    <input type="password" name="password_confirmation" placeholder="Repite la nueva" required minlength="8">
+    <input type="password" name="password" placeholder="Nueva (12+, Aa1)" required minlength="12">
+    <input type="password" name="password_confirmation" placeholder="Repite la nueva" required minlength="12">
     <button>Cambiar</button>
   </form>
 </div>

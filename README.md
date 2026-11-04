@@ -115,6 +115,20 @@ Solo entran los aparatos que tú agregues a tu red de Tailscale; la app no queda
 
 Sin `tailscale serve` también funciona por la IP de Tailscale: `http://100.x.y.z:8000` (la ves con `tailscale ip -4`), pero sin HTTPS.
 
+### Opción 2b: socios sin instalar nada, con Tailscale Funnel (gratis)
+
+Funnel publica la misma dirección en internet, así que los socios entran desde cualquier navegador solo con su usuario y contraseña de la app. Requiere MagicDNS y HTTPS activados en https://login.tailscale.com/admin/dns.
+
+```bash
+sudo tailscale serve reset          # quita el serve privado
+sudo tailscale funnel --bg 8000     # lo mismo, pero público
+tailscale funnel status
+```
+
+Para regresar a privado: `sudo tailscale funnel reset && sudo tailscale serve --bg 8000`.
+
+Como el login queda expuesto, la app exige contraseñas de 12+ caracteres con mayúsculas, minúsculas y números, bloquea tras 5 intentos fallidos por minuto, y obliga a cambiar la contraseña la primera vez que entra cada usuario (los que ya existían también).
+
 ### Opción 3: pública con Cloudflare Tunnel (gratis)
 
 Instala `cloudflared` ([instrucciones](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)).

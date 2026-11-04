@@ -111,11 +111,11 @@ class AjustesController extends Controller
         $d = $request->validate([
             'name' => 'required|string|max:100',
             'usuario' => 'required|alpha_dash|max:40|unique:users,usuario',
-            'password' => ['required', Password::min(8)],
+            'password' => ['required', Password::defaults()],
         ]);
-        User::create($d + ['admin' => $request->boolean('admin')]);
+        User::create($d + ['admin' => $request->boolean('admin'), 'cambiar_password' => true]);
 
-        return back()->with('ok', "Usuario {$d['usuario']} creado. Pásale su contraseña para que entre.");
+        return back()->with('ok', "Usuario {$d['usuario']} creado. Pásale su contraseña; al entrar la primera vez tendrá que cambiarla.");
     }
 
     public function borrarUsuario(Request $request, User $user)
@@ -130,9 +130,9 @@ class AjustesController extends Controller
     {
         $d = $request->validate([
             'actual' => 'required|current_password',
-            'password' => ['required', 'confirmed', Password::min(8)],
+            'password' => ['required', 'confirmed', Password::defaults()],
         ]);
-        $request->user()->update(['password' => $d['password']]);
+        $request->user()->update(['password' => $d['password'], 'cambiar_password' => false]);
 
         return back()->with('ok', 'Contraseña cambiada.');
     }

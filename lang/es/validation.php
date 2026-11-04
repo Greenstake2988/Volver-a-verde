@@ -28,6 +28,11 @@ return [
     'numeric' => ':attribute debe ser un número.',
     'password' => [
         'min' => 'La contraseña debe tener al menos :min caracteres.',
+        'letters' => 'La contraseña debe tener letras.',
+        'mixed' => 'La contraseña debe tener mayúsculas y minúsculas.',
+        'numbers' => 'La contraseña debe tener al menos un número.',
+        'symbols' => 'La contraseña debe tener al menos un símbolo.',
+        'uncompromised' => 'Esa contraseña aparece en filtraciones; usa otra.',
     ],
     'required' => 'Falta :attribute.',
     'string' => ':attribute no es válido.',
