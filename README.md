@@ -10,6 +10,7 @@ Hecha con **Laravel 13** (PHP 8.3) y SQLite. Las vistas son Blade con CSS propio
 - **Resumen**: utilidad neta, ocupación, tarifa promedio, de dónde sale la utilidad (cobrado → comisión → impuestos retenidos → depositado → gastos), gastos por categoría y rentabilidad por cuarto, con conclusiones en lenguaje simple.
 - **Flujo de efectivo**: saldo de cada cuenta (débito y crédito), lo que se debe en la tarjeta, lo que se debe a cada socio, el disponible real, entradas y salidas por mes y lo que falta por cobrar. Ahí se registran los pagos de la tarjeta, los reembolsos a socios y los ajustes con el banco.
 - **Gastos**: cada socio registra sus gastos desde el celular con foto, PDF o XML del comprobante. Se marcan *con factura*, *no es del negocio* (sale en el reporte del contador pero no resta en la utilidad) y con qué se pagó: una cuenta del negocio (débito o crédito) o dinero propio del socio, que queda por reembolsar.
+- **Estados de cuenta**: cada socio sube el PDF (o foto/CSV/Excel) del estado de cuenta de su tarjeta por mes; una tabla por año marca qué mes falta.
 - **Importar / Contador** (admin): importa el CSV de Airbnb (Ganancias → Historial de transacciones) y el CSV de gastos de Excel; descarga reservas y gastos del periodo para el contador.
 - **Ajustes**: usuarios, cuentas (saldo o deuda inicial y cuál recibe los depósitos de Airbnb), nombres de los cuartos y su anuncio en Airbnb.
 
@@ -17,6 +18,7 @@ Hecha con **Laravel 13** (PHP 8.3) y SQLite. Las vistas son Blade con CSS propio
 |---|---|---|
 | Registrar gastos y subir comprobantes | ✓ | ✓ |
 | Ver resumen, flujo, reservas y gastos | ✓ | ✓ |
+| Subir estados de cuenta | de su tarjeta (o sin asignar) | de todas |
 | Borrar gastos | solo los suyos | todos |
 | Registrar gastos a nombre de otro socio (“¿Quién lo pagó?”) | | ✓ |
 | Importar, capturar reservas, ajustes, usuarios, reporte del contador | | ✓ |

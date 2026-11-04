@@ -14,7 +14,7 @@
     <form method="post" action="{{ route('logout') }}" class="inline">@csrf<button class="link claro">Salir</button></form>
   </div>
   <nav>
-    @php($nav = ['resumen' => 'Resumen', 'flujo' => 'Flujo de efectivo', 'reservas.index' => 'Reservas', 'gastos.index' => 'Gastos'])
+    @php($nav = ['resumen' => 'Resumen', 'flujo' => 'Flujo de efectivo', 'reservas.index' => 'Reservas', 'gastos.index' => 'Gastos', 'estados.index' => 'Estados de cuenta'])
     @foreach ($nav as $ruta => $texto)
       <a href="{{ route($ruta) }}" class="{{ request()->routeIs($ruta) ? 'activo' : '' }}">{{ $texto }}</a>
     @endforeach
