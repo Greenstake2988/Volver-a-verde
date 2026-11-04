@@ -18,3 +18,23 @@ jobs:
       - run: composer install --no-interaction --prefer-dist --no-progress
       - run: cp .env.example .env && php artisan key:generate
       - run: php artisan test
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose up -d --build
+      - name: La app responde y pide crear el administrador
+        run: |
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8000/up && break; sleep 2; done
+          curl -fsS http://127.0.0.1:8000/up
+          curl -fsSL http://127.0.0.1:8000/ | grep -qi "administrador"
+          docker compose exec -T app ls /var/www/html/storage/database.sqlite /var/www/html/storage/app_key
+      - name: Al reiniciar conserva la llave y la base
+        run: |
+          K1=$(docker compose exec -T app cat /var/www/html/storage/app_key)
+          docker compose down && docker compose up -d
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8000/up && break; sleep 2; done
+          [ "$K1" = "$(docker compose exec -T app cat /var/www/html/storage/app_key)" ]
+      - if: failure()
+        run: docker compose logs
