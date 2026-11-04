@@ -78,7 +78,24 @@ Para actualizar después: `./deploy/actualizar.sh`.
 
 Desde cualquier celular o compu en la misma WiFi: `http://IP-DEL-SERVIDOR:8000` (la IP la ves con `hostname -I`). Si tienes firewall: `sudo ufw allow 8000/tcp`.
 
-### Opción 2: desde cualquier lugar con Cloudflare Tunnel (gratis)
+### Opción 2 (recomendada): desde cualquier lugar con Tailscale (gratis)
+
+Solo entran los aparatos que tú agregues a tu red de Tailscale; la app no queda pública en internet y no hay que abrir puertos del módem.
+
+1. En el servidor:
+   ```bash
+   curl -fsSL https://tailscale.com/install.sh | sh
+   sudo tailscale up            # abre el enlace que imprime e inicia sesión
+   sudo tailscale serve --bg 8000
+   tailscale serve status       # muestra la dirección, algo como https://servidor.tu-red.ts.net
+   ```
+   `tailscale serve` le pone HTTPS con certificado válido y se queda corriendo aunque reinicies (el `--bg`). Si te pide activar HTTPS o MagicDNS, sigue el enlace que imprime.
+2. Pon esa dirección en `APP_URL` del `.env` y corre `php artisan config:cache`.
+3. En cada celular o compu de los socios: instala la app de Tailscale, entra con la misma cuenta (o invítalos desde el panel de Tailscale) y abre la dirección.
+
+Sin `tailscale serve` también funciona por la IP de Tailscale: `http://100.x.y.z:8000` (la ves con `tailscale ip -4`), pero sin HTTPS.
+
+### Opción 3: pública con Cloudflare Tunnel (gratis)
 
 Instala `cloudflared` ([instrucciones](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)).
 
