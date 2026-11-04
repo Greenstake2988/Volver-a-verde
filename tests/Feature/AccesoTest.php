@@ -127,7 +127,7 @@ class AccesoTest extends TestCase
     {
         $this->seed(\Database\Seeders\DemoSeeder::class);
         $admin = User::factory()->admin()->create();
-        foreach (['/', '/?periodo=12m', '/flujo', '/reservas', '/gastos', '/gastos?filtro=sin-comprobante', '/datos', '/ajustes'] as $url) {
+        foreach (['/', '/?periodo=12m', '/flujo', '/reservas', '/gastos', '/gastos?filtro=sin-comprobante', '/datos', '/ajustes', '/estados-de-cuenta', '/estados-de-cuenta?anio=2025'] as $url) {
             $this->actingAs($admin)->get($url)->assertOk();
         }
         $this->actingAs($admin)->get('/datos/exportar/gastos?desde=2026-01-01&hasta=2026-12-31')->assertOk()
@@ -267,5 +267,35 @@ class AccesoTest extends TestCase
 
         $this->assertFalse($ana->fresh()->cambiar_password);
         $this->get('/gastos')->assertOk();
+    }
+
+    public function test_socios_suben_estados_de_cuenta_de_sus_tarjetas(): void
+    {
+        Storage::fake('local');
+        $ana = User::factory()->create(['name' => 'Ana']);
+        $beto = User::factory()->create();
+        $suya = \App\Models\Cuenta::create(['nombre' => 'Visa Ana', 'tipo' => 'credito', 'saldo_inicial' => 0,
+            'fecha_saldo' => '2026-01-01', 'user_id' => $ana->id]);
+        $deBeto = \App\Models\Cuenta::create(['nombre' => 'Amex Beto', 'tipo' => 'credito', 'saldo_inicial' => 0,
+            'fecha_saldo' => '2026-01-01', 'user_id' => $beto->id]);
+
+        $pdf = fn () => UploadedFile::fake()->create('octubre.pdf', 200, 'application/pdf');
+        $this->actingAs($ana)->post('/estados-de-cuenta', ['cuenta_id' => $suya->id, 'mes' => '2026-10', 'archivos' => [$pdf()]])
+            ->assertSessionHasNoErrors()->assertRedirect('/estados-de-cuenta?anio=2026');
+        // No puede subir a la tarjeta de otro socio.
+        $this->post('/estados-de-cuenta', ['cuenta_id' => $deBeto->id, 'mes' => '2026-10', 'archivos' => [$pdf()]])->assertForbidden();
+        // Hace falta el archivo.
+        $this->post('/estados-de-cuenta', ['cuenta_id' => $suya->id, 'mes' => '2026-10'])->assertSessionHasErrors('archivos');
+
+        $estado = \App\Models\EstadoCuenta::sole();
+        Storage::disk('local')->assertExists($estado->ruta);
+        $this->get('/estados-de-cuenta?anio=2026')->assertOk()->assertSee('Visa Ana')->assertSee(route('estados.show', $estado));
+        $this->get(route('estados.show', $estado))->assertOk();
+
+        // Otro socio lo ve pero no lo borra; quien lo subió, sí.
+        $this->actingAs($beto)->delete(route('estados.destroy', $estado))->assertForbidden();
+        $this->actingAs($ana)->delete(route('estados.destroy', $estado))->assertRedirect();
+        Storage::disk('local')->assertMissing($estado->ruta);
+        $this->assertSame(0, \App\Models\EstadoCuenta::count());
     }
 }

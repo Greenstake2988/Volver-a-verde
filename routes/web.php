@@ -3,6 +3,7 @@
 use App\Http\Controllers\AjustesController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DatosController;
+use App\Http\Controllers\EstadoCuentaController;
 use App\Http\Controllers\GastoController;
 use App\Http\Controllers\PanelController;
 use App\Http\Controllers\ReservaController;
@@ -28,6 +29,10 @@ Route::middleware(['auth', 'cambiar-password'])->group(function () {
     Route::post('/gastos/{gasto}/comprobantes', [GastoController::class, 'subirComprobante'])->name('comprobantes.store');
     Route::get('/comprobantes/{comprobante}', [GastoController::class, 'verComprobante'])->name('comprobantes.show');
     Route::delete('/comprobantes/{comprobante}', [GastoController::class, 'borrarComprobante'])->name('comprobantes.destroy');
+    Route::get('/estados-de-cuenta', [EstadoCuentaController::class, 'index'])->name('estados.index');
+    Route::post('/estados-de-cuenta', [EstadoCuentaController::class, 'store'])->name('estados.store');
+    Route::get('/estados-de-cuenta/{estado}', [EstadoCuentaController::class, 'show'])->name('estados.show');
+    Route::delete('/estados-de-cuenta/{estado}', [EstadoCuentaController::class, 'destroy'])->name('estados.destroy');
     Route::get('/ajustes', [AjustesController::class, 'index'])->name('ajustes');
     Route::post('/ajustes/password', [AjustesController::class, 'password'])->name('ajustes.password');
 
