@@ -56,7 +56,27 @@ php artisan test                         # pruebas de cálculos, importación y 
 
 La primera vez que abres la app te pide crear el usuario **administrador**. Después, en **Ajustes → Usuarios**, das de alta a cada socio.
 
-## Ponerla en el servidor Linux
+## Ponerla en el servidor con Docker (recomendado)
+
+Solo necesitas Docker con el plugin `compose`.
+
+```bash
+git clone https://github.com/Greenstake2988/Volver-a-verde.git volver-a-verde
+cd volver-a-verde
+docker compose up -d --build
+```
+
+Queda en `http://localhost:8000` del servidor. La primera vez la app te pide crear el usuario administrador.
+
+- **Datos:** la base de datos, los comprobantes y la llave de la app viven en el volumen `datos` de Docker; no se pierden al reconstruir ni al actualizar.
+- **Entrar desde fuera:** con Tailscale en el servidor, `sudo tailscale serve --bg 8000` (ver abajo). Luego crea un archivo `.env` junto a `docker-compose.yml` con `APP_URL=https://servidor.tu-red.ts.net` y corre `docker compose up -d`.
+- **Desde la red de la casa sin Tailscale:** en `docker-compose.yml` cambia `"127.0.0.1:8000:80"` por `"8000:80"`.
+- **Actualizar:** `git pull && docker compose up -d --build` (las migraciones corren solas al arrancar).
+- **Respaldo:** `docker compose cp app:/var/www/html/storage ./respaldo-$(date +%F)` copia base, comprobantes y llave.
+- **Ver errores:** `docker compose logs -f`.
+- **Comandos de artisan:** `docker compose exec app php artisan ...` (por ejemplo `db:seed --class=GastosDemoSeeder`).
+
+## Ponerla en el servidor Linux sin Docker
 
 Necesitas PHP 8.3 con `php-fpm`, `php-sqlite3`, `php-mbstring`, `php-xml`, `php-curl`, `php-intl`, Composer y nginx.
 

@@ -1,0 +1,19 @@
+# docker compose up -d --build   →   http://localhost:8000
+services:
+  app:
+    build: .
+    image: volver-a-verde
+    restart: unless-stopped
+    ports:
+      # Solo en la propia máquina: se entra por Tailscale (tailscale serve --bg 8000).
+      # Para entrar desde la red de la casa sin Tailscale, cambia a "8000:80".
+      - "127.0.0.1:8000:80"
+    environment:
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      # Tailscale / nginx del servidor llegan desde la red de Docker.
+      TRUSTED_PROXIES: "*"
+    volumes:
+      - datos:/var/www/html/storage   # base de datos, comprobantes y llave
+
+volumes:
+  datos:

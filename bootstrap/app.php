@@ -12,8 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Cloudflare Tunnel (o nginx) en la misma máquina: confiar en sus encabezados X-Forwarded-*.
-        $middleware->trustProxies(at: ['127.0.0.1', '::1']);
+        // Proxy delante de la app (Tailscale serve, nginx, Cloudflare Tunnel): confiar en sus X-Forwarded-*.
+        // En la misma máquina basta 127.0.0.1; en Docker llegan desde la red interna (TRUSTED_PROXIES=*).
+        $proxies = env('TRUSTED_PROXIES', '127.0.0.1,::1');
+        $middleware->trustProxies(at: $proxies === '*' ? '*' : array_map('trim', explode(',', $proxies)));
         $middleware->redirectUsersTo('/');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
