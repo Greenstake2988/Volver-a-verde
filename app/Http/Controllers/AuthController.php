@@ -50,7 +50,7 @@ class AuthController extends Controller
         $datos = $request->validate([
             'name' => 'required|string|max:100',
             'usuario' => 'required|alpha_dash|max:40',
-            'password' => ['required', 'confirmed', Password::min(8)],
+            'password' => ['required', 'confirmed', Password::defaults()],
         ]);
         $user = User::create(['name' => $datos['name'], 'usuario' => mb_strtolower($datos['usuario']),
             'password' => $datos['password'], 'admin' => true]);

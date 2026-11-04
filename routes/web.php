@@ -15,7 +15,7 @@ Route::middleware('guest')->group(function () {
     Route::post('/primer-usuario', [AuthController::class, 'crearPrimerUsuario'])->middleware('throttle:login');
 });
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'cambiar-password'])->group(function () {
     Route::post('/logout', [AuthController::class, 'salir'])->name('logout');
 
     // Todos los usuarios (socios y administradores)

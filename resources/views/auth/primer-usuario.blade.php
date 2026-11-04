@@ -13,8 +13,8 @@
     <p class="ayuda">Primera vez: crea tu usuario de administrador. Después das de alta a los socios en Ajustes.</p>
     <label class="bloque">Tu nombre <input name="name" value="{{ old('name') }}" required autofocus></label>
     <label class="bloque">Usuario <input name="usuario" value="{{ old('usuario') }}" autocapitalize="none" required></label>
-    <label class="bloque">Contraseña (8 o más) <input type="password" name="password" required minlength="8"></label>
-    <label class="bloque">Repite la contraseña <input type="password" name="password_confirmation" required minlength="8"></label>
+    <label class="bloque">Contraseña (12 o más, con mayúsculas, minúsculas y números) <input type="password" name="password" required minlength="12"></label>
+    <label class="bloque">Repite la contraseña <input type="password" name="password_confirmation" required minlength="12"></label>
     <button>Crear y entrar</button>
     @if ($errors->any())<p class="error">{{ $errors->first() }}</p>@endif
   </form>

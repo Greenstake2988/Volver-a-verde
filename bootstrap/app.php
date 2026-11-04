@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $proxies = env('TRUSTED_PROXIES', '127.0.0.1,::1');
         $middleware->trustProxies(at: $proxies === '*' ? '*' : array_map('trim', explode(',', $proxies)));
         $middleware->redirectUsersTo('/');
+        $middleware->alias(['cambiar-password' => \App\Http\Middleware\CambiarPassword::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
