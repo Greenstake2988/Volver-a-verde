@@ -102,4 +102,20 @@ class PanelController extends Controller
 
         return back()->with('ok', 'Ajuste agregado.');
     }
+
+    /** Borrar un pago de tarjeta o un reembolso capturado por error (quita sus dos renglones). */
+    public function borrarTransferencia(Transferencia $transferencia)
+    {
+        $transferencia->delete();
+
+        return back()->with('ok', $transferencia->destino_id ? 'Pago de tarjeta borrado.' : 'Reembolso borrado.');
+    }
+
+    /** Borrar un ajuste con el banco o el pago de un socio capturado por error. */
+    public function borrarMovimiento(Movimiento $movimiento)
+    {
+        $movimiento->delete();
+
+        return back()->with('ok', $movimiento->user_id ? 'Pago del socio borrado.' : 'Ajuste borrado.');
+    }
 }

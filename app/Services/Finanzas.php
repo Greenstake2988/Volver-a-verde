@@ -200,6 +200,29 @@ class Finanzas
         return array_values(array_filter($porReembolsar, fn ($p) => round($p['monto'], 2) > 0));
     }
 
+    /**
+     * Movimientos para la tabla: un pago de tarjeta sale en un solo renglón ("MAESTRA → BBVA Pyme")
+     * en vez de dos (lo que sale del débito y lo que baja la deuda).
+     */
+    private static function paraMostrar($lineas, $cuentas): array
+    {
+        $conOrigen = $lineas->filter(fn ($l) => isset($l['transferencia_id']) && empty($l['espejo']))->pluck('transferencia_id')->flip();
+
+        return $lineas->reverse()
+            ->reject(fn ($l) => ! empty($l['espejo']) && isset($conOrigen[$l['transferencia_id']]))
+            ->take(200)
+            ->map(function ($l) use ($cuentas) {
+                $l['cuenta'] = $cuentas[$l['cuenta_id']]->nombre ?? '—';
+                if ($l['interno'] && empty($l['espejo']) && ! empty($l['destino'])) {
+                    $l['cuenta'] .= ' → '.$l['destino'];
+                    $l['concepto'] = 'Pago de tarjeta (traspaso entre tus cuentas, no es gasto)';
+                    $l['monto'] = abs($l['monto']);
+                }
+
+                return $l;
+            })->values()->all();
+    }
+
     public function flujo(?CarbonImmutable $hoy = null): array
     {
         $hoy = ($hoy ?? CarbonImmutable::today())->toDateString();
@@ -222,7 +245,7 @@ class Finanzas
         }
         foreach (Gasto::whereNotNull('cuenta_id')->with('user')->get() as $g) {
             $lineas->push(['fecha' => $g->fecha->toDateString(), 'cuenta_id' => $g->cuenta_id, 'monto' => -$g->monto,
-                'interno' => false,
+                'interno' => false, 'gasto_id' => $g->id,
                 'concepto' => trim("{$g->categoria}: {$g->descripcion}", ': ')
                     .($g->personal ? ' (no es del negocio; lo debe '.($g->user->name ?? 'el socio').')' : '')]);
         }
@@ -233,16 +256,18 @@ class Finanzas
                 : 'Reembolso a '.($t->socio->name ?? 'socio');
             $concepto .= $t->concepto ? " ({$t->concepto})" : '';
             $lineas->push(['fecha' => $fecha, 'cuenta_id' => $t->origen_id, 'monto' => -$t->monto,
-                'interno' => (bool) $t->destino_id, 'concepto' => $concepto]);
+                'interno' => (bool) $t->destino_id, 'concepto' => $concepto, 'transferencia_id' => $t->id,
+                'destino' => $t->destino->nombre ?? null]);
             if ($t->destino_id) {
                 $lineas->push(['fecha' => $fecha, 'cuenta_id' => $t->destino_id, 'monto' => $t->monto,
-                    'interno' => true, 'concepto' => "Pago desde {$cuentas[$t->origen_id]->nombre}"]);
+                    'interno' => true, 'concepto' => "Pago desde {$cuentas[$t->origen_id]->nombre}",
+                    'transferencia_id' => $t->id, 'espejo' => true]);
             }
         }
         foreach (Movimiento::with('usuario')->get() as $mv) {
             $concepto = $mv->user_id ? trim('Pago de '.($mv->usuario->name ?? 'socio').' '.$mv->concepto) : ($mv->concepto ?: 'Ajuste');
             $lineas->push(['fecha' => $mv->fecha->toDateString(), 'cuenta_id' => $mv->cuenta_id, 'monto' => $mv->monto,
-                'interno' => false, 'concepto' => $concepto]);
+                'interno' => false, 'concepto' => $concepto, 'movimiento_id' => $mv->id]);
         }
 
         // Solo cuenta lo que pasó desde la fecha del saldo inicial de cada cuenta.
@@ -289,9 +314,7 @@ class Finanzas
             'disponible' => array_sum($saldos) - $totalReembolsar,
             'por_cobrar' => $porCobrar,
             'meses' => array_values($meses),
-            'movimientos' => $lineas->reverse()->take(200)->map(fn ($l) => $l + [
-                'cuenta' => $cuentas[$l['cuenta_id']]->nombre ?? '—',
-            ])->values()->all(),
+            'movimientos' => self::paraMostrar($lineas, $cuentas),
         ];
     }
 }

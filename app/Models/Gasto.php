@@ -13,7 +13,7 @@ class Gasto extends Model
     public const CATEGORIAS = [
         'Limpieza', 'Lavandería', 'Luz', 'Agua', 'Gas', 'Internet', 'Gasolina',
         'Mantenimiento', 'Insumos', 'Mobiliario y equipo', 'Predial',
-        'Contador', 'Sueldos', 'Otros',
+        'Contador', 'Sueldos', 'Impuestos', 'Otros',
     ];
 
     protected $table = 'gastos';
