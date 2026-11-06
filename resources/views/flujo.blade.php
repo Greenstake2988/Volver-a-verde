@@ -125,10 +125,22 @@
 
 <div class="card">
   <h2>Movimientos</h2>
+  <p class="ayuda">Los pagos de tarjeta salen en gris en un solo renglón: pasan dinero del débito a la tarjeta y no cuentan como gasto. Los gastos se borran desde Gastos.</p>
   <table class="tabla">
-    <tr><th>Fecha</th><th>Cuenta</th><th>Concepto</th><th class="n">Monto</th></tr>
+    <tr><th>Fecha</th><th>Cuenta</th><th>Concepto</th><th class="n">Monto</th><th></th></tr>
     @foreach ($f['movimientos'] as $m)
-      <tr class="{{ $m['interno'] ? 'personal' : '' }}"><td>{{ $m['fecha'] }}</td><td>{{ $m['cuenta'] }}</td><td>{{ $m['concepto'] }}</td><td class="n {{ $m['monto'] >= 0 ? 'pos' : 'neg' }}">{{ dinero($m['monto']) }}</td></tr>
+      <tr class="{{ $m['interno'] ? 'personal' : '' }}"><td>{{ $m['fecha'] }}</td><td>{{ $m['cuenta'] }}</td><td>{{ $m['concepto'] }}</td>
+        <td class="n {{ $m['interno'] ? '' : ($m['monto'] >= 0 ? 'pos' : 'neg') }}">{{ dinero($m['monto']) }}</td>
+        <td>
+          @can('admin')
+            @if (! empty($m['transferencia_id']))
+              <form method="post" action="{{ route('transferencias.destroy', $m['transferencia_id']) }}" class="inline" data-confirmar="¿Borrar este {{ $m['interno'] ? 'pago de tarjeta' : 'reembolso' }}? El dinero vuelve a la cuenta de origen.">@csrf @method('delete')<button class="link">Borrar</button></form>
+            @elseif (! empty($m['movimiento_id']))
+              <form method="post" action="{{ route('movimientos.destroy', $m['movimiento_id']) }}" class="inline" data-confirmar="¿Borrar este movimiento?">@csrf @method('delete')<button class="link">Borrar</button></form>
+            @endif
+          @endcan
+          @if (! empty($m['gasto_id']))<a class="link" href="{{ route('gastos.index') }}">ver en Gastos</a>@endif
+        </td></tr>
     @endforeach
   </table>
 </div>
