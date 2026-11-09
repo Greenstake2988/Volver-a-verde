@@ -121,7 +121,7 @@ class Finanzas
         if (! $t['noches'] && ! $t['gastos']) {
             return ['nivel' => 'meh', 'titulo' => 'Todavía no hay datos en este periodo.', 'notas' => []];
         }
-        $m = fn ($v) => '$'.number_format($v, 0);
+        $m = fn ($v) => dinero($v);
         $p = fn ($v) => round($v * 100).'%';
         $nivel = $t['utilidad'] > 0 ? ($t['margen'] >= 0.25 ? 'bien' : 'meh') : 'mal';
         $titulo = $t['utilidad'] > 0
