@@ -243,13 +243,13 @@ class AccesoTest extends TestCase
         $this->actingAs($ana)->post('/abonos', ['fecha' => $hoy, 'monto' => 1, 'cuenta_id' => $debito->id, 'user_id' => $ana->id])->assertForbidden();
     }
 
-    public function test_contrasena_fuerte_y_cambio_obligatorio(): void
+    public function test_contrasena_de_8_y_cambio_obligatorio(): void
     {
         $admin = User::factory()->admin()->create();
         $this->actingAs($admin);
 
-        // Contraseña débil: no se acepta.
-        $this->post('/ajustes/usuarios', ['name' => 'Ana', 'usuario' => 'ana', 'password' => 'secreto123'])
+        // Menos de 8 caracteres: no se acepta.
+        $this->post('/ajustes/usuarios', ['name' => 'Ana', 'usuario' => 'ana', 'password' => 'corta1'])
             ->assertSessionHasErrors('password');
         $this->post('/ajustes/usuarios', ['name' => 'Ana', 'usuario' => 'ana', 'password' => 'Temporal12345'])
             ->assertSessionHasNoErrors();
@@ -260,10 +260,11 @@ class AccesoTest extends TestCase
         $this->actingAs($ana)->get('/gastos')->assertRedirect('/ajustes');
         $this->get('/ajustes')->assertOk()->assertSee('Antes de seguir');
 
-        $this->post('/ajustes/password', ['actual' => 'Temporal12345', 'password' => 'otraclave123',
-            'password_confirmation' => 'otraclave123'])->assertSessionHasErrors('password');
-        $this->post('/ajustes/password', ['actual' => 'Temporal12345', 'password' => 'MiClaveNueva2026',
-            'password_confirmation' => 'MiClaveNueva2026'])->assertSessionHasNoErrors();
+        $this->post('/ajustes/password', ['actual' => 'Temporal12345', 'password' => 'casa1',
+            'password_confirmation' => 'casa1'])->assertSessionHasErrors('password');
+        // 8 letras minúsculas sin números ya se aceptan.
+        $this->post('/ajustes/password', ['actual' => 'Temporal12345', 'password' => 'volververde',
+            'password_confirmation' => 'volververde'])->assertSessionHasNoErrors();
 
         $this->assertFalse($ana->fresh()->cambiar_password);
         $this->get('/gastos')->assertOk();

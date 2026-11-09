@@ -129,7 +129,7 @@ tailscale funnel status
 
 Para regresar a privado: `sudo tailscale funnel reset && sudo tailscale serve --bg 8000`.
 
-Como el login queda expuesto, la app exige contraseñas de 12+ caracteres con mayúsculas, minúsculas y números, bloquea tras 5 intentos fallidos por minuto, y obliga a cambiar la contraseña la primera vez que entra cada usuario (los que ya existían también).
+Como el login queda expuesto, la app exige contraseñas de 8+ caracteres, bloquea tras 5 intentos fallidos por minuto, y obliga a cambiar la contraseña la primera vez que entra cada usuario (los que ya existían también).
 
 ### Opción 3: pública con Cloudflare Tunnel (gratis)
 
