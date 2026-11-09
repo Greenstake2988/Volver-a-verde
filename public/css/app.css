@@ -85,6 +85,8 @@ nav a.activo { background: var(--bg); color: var(--texto); font-weight: 600; }
 .aviso.error { background: var(--rojo-claro); color: var(--rojo); }
 .aviso ul { margin: 0; padding-left: 18px; }
 form.inline { display: inline; }
+.acciones { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
+a.link { padding: 2px 6px; }
 .paginacion { margin-top: 12px; font-size: 13px; }
 .paginacion nav { display: flex; gap: 6px; } .paginacion a, .paginacion span { color: var(--verde); padding: 4px; }
 .login-pagina { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
