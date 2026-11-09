@@ -122,7 +122,8 @@
           @if ($g->cuenta)<span class="tag gris">{{ $g->cuenta->nombre }}</span>@else<span class="tag ambar">Por reembolsar</span>@endif
         </td>
         <td class="n">{{ dinero($g->monto) }}</td>
-        <td>@if ($puede)<form method="post" action="{{ route('gastos.destroy', $g) }}" class="inline" data-confirmar="¿Borrar este gasto y sus comprobantes?">@csrf @method('delete')<button class="link">Borrar</button></form>@endif</td>
+        <td>@can('admin')<a class="link" href="{{ route('gastos.edit', $g) }}?volver={{ urlencode(request()->fullUrl()) }}">Editar</a> @endcan
+          @if ($puede)<form method="post" action="{{ route('gastos.destroy', $g) }}" class="inline" data-confirmar="¿Borrar este gasto y sus comprobantes?">@csrf @method('delete')<button class="link">Borrar</button></form>@endif</td>
       </tr>
     @endforeach
   </table>
