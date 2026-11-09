@@ -1,12 +1,12 @@
 <?php
 
 if (! function_exists('dinero')) {
-    /** $1,234 en pesos, sin centavos. */
+    /** $1,234.50 en pesos, con centavos. */
     function dinero(float|int|null $v): string
     {
         $v = (float) $v;
 
-        return ($v < 0 ? '−$' : '$').number_format(abs($v), 0);
+        return ($v < 0 ? '−$' : '$').number_format(abs($v), 2);
     }
 }
 

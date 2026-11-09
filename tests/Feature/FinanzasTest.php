@@ -159,4 +159,11 @@ class FinanzasTest extends TestCase
         $this->actingAs($u)->post(route('gastos.store'), $datos + ['personal' => 1])
             ->assertSessionHas('ok', fn ($m) => str_contains($m, 'ya había otro gasto'));
     }
+
+    public function test_los_montos_se_muestran_con_centavos(): void
+    {
+        $this->assertSame('$1,450.50', dinero(1450.5));
+        $this->assertSame('−$99.99', dinero(-99.99));
+        $this->assertSame('$0.00', dinero(null));
+    }
 }
