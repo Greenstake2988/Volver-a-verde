@@ -136,8 +136,15 @@ class GastoController extends Controller
             $this->guardarArchivo($gasto, $archivo, $request->user()->id);
         }
 
-        // Aviso si el socio ya pasó su tope del mes en gastos personales con cuentas del negocio.
         $msg = 'Gasto guardado.';
+        // Aviso si ya había un gasto igual (mismo día, monto y cuenta): suele ser una captura doble.
+        $igual = Gasto::where('id', '!=', $gasto->id)->whereDate('fecha', $gasto->fecha->toDateString())
+            ->where('monto', $gasto->monto)->where('cuenta_id', $gasto->cuenta_id)->first();
+        if ($igual) {
+            $msg .= ' Ojo: ya había otro gasto de '.dinero($gasto->monto).' ese día con la misma cuenta ('
+                .trim("{$igual->categoria}: {$igual->descripcion}", ': ').'). Si es el mismo, borra uno.';
+        }
+        // Aviso si el socio ya pasó su tope del mes en gastos personales con cuentas del negocio.
         $socio = User::find($duenoId);
         if ($gasto->personal && $gasto->cuenta_id && $socio?->limite_mensual) {
             $mes = (float) (self::personalDelMes(\Carbon\CarbonImmutable::parse($gasto->fecha))[$socio->id] ?? 0);

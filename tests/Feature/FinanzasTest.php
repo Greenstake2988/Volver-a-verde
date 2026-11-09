@@ -119,4 +119,44 @@ class FinanzasTest extends TestCase
         $this->seed(\Database\Seeders\GastosDemoSeeder::class);
         $this->assertSame($n, Gasto::count());
     }
+
+    public function test_pago_de_tarjeta_sale_en_un_renglon_y_se_puede_borrar(): void
+    {
+        $debito = Cuenta::where('tipo', 'debito')->first();
+        $credito = Cuenta::where('tipo', 'credito')->first();
+        $debito->update(['saldo_inicial' => 10000, 'fecha_saldo' => '2026-10-01']);
+        $credito->update(['saldo_inicial' => -3000, 'fecha_saldo' => '2026-10-01']);
+        $t = Transferencia::create(['fecha' => '2026-10-20', 'monto' => 1000, 'origen_id' => $debito->id, 'destino_id' => $credito->id]);
+
+        $f = (new Finanzas)->flujo(CarbonImmutable::parse('2026-11-01'));
+        $this->assertCount(1, $f['movimientos']);
+        $this->assertSame("{$debito->nombre} → {$credito->nombre}", $f['movimientos'][0]['cuenta']);
+        $this->assertEqualsWithDelta(1000, $f['movimientos'][0]['monto'], 0.01);
+
+        $admin = User::factory()->create(['admin' => true]);
+        $this->actingAs($admin)->delete(route('transferencias.destroy', $t))->assertRedirect();
+        $this->assertDatabaseCount('transferencias', 0);
+        $saldo = collect((new Finanzas)->flujo(CarbonImmutable::parse('2026-11-01'))['cuentas'])->keyBy('tipo');
+        $this->assertEqualsWithDelta(10000, $saldo['debito']['saldo'], 0.01);
+        $this->assertEqualsWithDelta(-3000, $saldo['credito']['saldo'], 0.01);
+    }
+
+    public function test_socio_no_puede_borrar_pagos_de_tarjeta(): void
+    {
+        $debito = Cuenta::where('tipo', 'debito')->first();
+        $credito = Cuenta::where('tipo', 'credito')->first();
+        $t = Transferencia::create(['fecha' => '2026-10-20', 'monto' => 1000, 'origen_id' => $debito->id, 'destino_id' => $credito->id]);
+        $this->actingAs(User::factory()->create(['admin' => false]))->delete(route('transferencias.destroy', $t))->assertForbidden();
+        $this->assertDatabaseCount('transferencias', 1);
+    }
+
+    public function test_avisa_si_el_gasto_parece_duplicado(): void
+    {
+        $credito = Cuenta::where('tipo', 'credito')->first();
+        $u = User::factory()->create(['admin' => true]);
+        $datos = ['fecha' => now()->toDateString(), 'monto' => 618, 'categoria' => 'Luz', 'descripcion' => 'Lavandería', 'cuenta_id' => $credito->id];
+        $this->actingAs($u)->post(route('gastos.store'), $datos)->assertSessionHas('ok', 'Gasto guardado.');
+        $this->actingAs($u)->post(route('gastos.store'), $datos + ['personal' => 1])
+            ->assertSessionHas('ok', fn ($m) => str_contains($m, 'ya había otro gasto'));
+    }
 }

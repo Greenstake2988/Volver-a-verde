@@ -26,8 +26,9 @@ class AppServiceProvider extends ServiceProvider
         // Un socio solo puede borrar lo que él registró; el administrador, todo.
         Gate::define('modificar-gasto', fn (User $user, Gasto $gasto) => $user->admin || $gasto->user_id === $user->id);
 
-        // La app puede quedar en internet (Tailscale Funnel): contraseñas fuertes.
-        Password::defaults(fn () => Password::min(12)->letters()->mixedCase()->numbers());
+        // Contraseñas de 8 o más caracteres, sin reglas de mayúsculas ni números.
+        // Lo que protege el login en internet es el bloqueo tras 5 intentos fallidos (abajo).
+        Password::defaults(fn () => Password::min(8));
 
         // Máximo 5 intentos de login por minuto por usuario + IP.
         RateLimiter::for('login', fn (Request $request) => Limit::perMinute(5)
