@@ -38,6 +38,8 @@ Route::middleware(['auth', 'cambiar-password'])->group(function () {
 
     // Solo administradores
     Route::middleware('can:admin')->group(function () {
+        Route::get('/gastos/{gasto}/editar', [GastoController::class, 'edit'])->name('gastos.edit');
+        Route::put('/gastos/{gasto}', [GastoController::class, 'update'])->name('gastos.update');
         Route::post('/movimientos', [PanelController::class, 'guardarMovimiento'])->name('movimientos.store');
         Route::post('/reservas', [ReservaController::class, 'store'])->name('reservas.store');
         Route::delete('/reservas/{reserva}', [ReservaController::class, 'destroy'])->name('reservas.destroy');

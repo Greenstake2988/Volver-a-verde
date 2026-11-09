@@ -299,4 +299,32 @@ class AccesoTest extends TestCase
         Storage::disk('local')->assertMissing($estado->ruta);
         $this->assertSame(0, \App\Models\EstadoCuenta::count());
     }
+
+    public function test_solo_admin_edita_gastos(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $socio = User::factory()->create();
+        $gasto = Gasto::create(['fecha' => '2026-11-04', 'monto' => 1253, 'categoria' => 'Limpieza', 'descripcion' => 'Impuestos',
+            'personal' => false, 'factura' => false, 'cuenta_id' => 1, 'user_id' => $socio->id, 'capturado_por' => $socio->id]);
+        $cambios = ['fecha' => '2026-11-04', 'monto' => '1253.50', 'categoria' => 'Impuestos', 'descripcion' => 'Pago SAT',
+            'user_id' => $socio->id, 'cuenta_id' => 1];
+
+        $this->actingAs($socio)->get(route('gastos.edit', $gasto))->assertForbidden();
+        $this->actingAs($socio)->put(route('gastos.update', $gasto), $cambios)->assertForbidden();
+        $this->actingAs($socio)->get('/gastos')->assertDontSee(route('gastos.edit', $gasto));
+
+        $this->actingAs($admin)->get('/gastos')->assertSee(route('gastos.edit', $gasto));
+        $this->actingAs($admin)->get(route('gastos.edit', $gasto))->assertOk()->assertSee('1253.00');
+        $this->actingAs($admin)->put(route('gastos.update', $gasto), $cambios + ['volver' => 'https://otro.sitio/x'])
+            ->assertRedirect(route('gastos.index'))->assertSessionHasNoErrors();
+
+        $gasto->refresh();
+        $this->assertSame('Impuestos', $gasto->categoria);
+        $this->assertSame(1253.5, $gasto->monto);
+        $this->assertSame('Pago SAT', $gasto->descripcion);
+        $this->assertSame($socio->id, $gasto->capturado_por);   // no cambia quién lo capturó
+
+        // Con factura hay que subirla.
+        $this->actingAs($admin)->put(route('gastos.update', $gasto), $cambios + ['factura' => 1])->assertSessionHasErrors('comprobantes');
+    }
 }

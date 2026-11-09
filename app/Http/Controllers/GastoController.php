@@ -104,20 +104,27 @@ class GastoController extends Controller
             ->when($f['hasta'] ?? null, fn ($q, $d) => $q->where('gastos.fecha', '<=', substr($d, 0, 10)));
     }
 
-    public function store(Request $request)
+    /** Reglas comunes para capturar y editar un gasto. */
+    private static function reglas(): array
     {
-        $datos = $request->validate([
+        return [
             'fecha' => 'required|date|before_or_equal:+1 day',
             'monto' => 'required|numeric|min:0.01',
             'categoria' => ['required', Rule::in(Gasto::CATEGORIAS)],
             'cuarto_id' => 'nullable|exists:cuartos,id',
             'descripcion' => 'nullable|string|max:200',
-            // Si dice que tiene factura, hay que subirla (PDF o XML del CFDI, o foto).
-            'comprobantes' => 'required_if_accepted:factura|nullable|array|max:5',
+            'comprobantes' => 'nullable|array|max:5',
             'comprobantes.*' => self::REGLA_ARCHIVO,
             'user_id' => 'nullable|exists:users,id',
             'cuenta_id' => 'nullable|exists:cuentas,id',   // vacío = dinero propio, por reembolsar
-        ], ['comprobantes.required_if_accepted' => 'Si el gasto tiene factura, sube la factura (PDF, XML o foto).']);
+        ];
+    }
+
+    public function store(Request $request)
+    {
+        // Si dice que tiene factura, hay que subirla (PDF o XML del CFDI, o foto).
+        $datos = $request->validate(['comprobantes' => 'required_if_accepted:factura|nullable|array|max:5'] + self::reglas(),
+            ['comprobantes.required_if_accepted' => 'Si el gasto tiene factura, sube la factura (PDF, XML o foto).']);
         // Un administrador puede registrar el gasto a nombre de otro socio; un socio, solo a su nombre.
         $duenoId = $request->user()->admin && ! empty($datos['user_id']) ? (int) $datos['user_id'] : $request->user()->id;
         $gasto = Gasto::create([
@@ -154,6 +161,44 @@ class GastoController extends Controller
         }
 
         return back()->with('ok', $msg);
+    }
+
+    /** Solo administradores: corregir un gasto ya capturado (categoría, monto, cuenta, etc.). */
+    public function edit(Gasto $gasto)
+    {
+        return view('gasto-editar', [
+            'g' => $gasto->load('comprobantes'),
+            'cuartos' => Cuarto::orderBy('id')->get(),
+            'cuentas' => Cuenta::orderBy('id')->get(),
+            'usuarios' => User::orderBy('name')->get(),
+        ]);
+    }
+
+    public function update(Request $request, Gasto $gasto)
+    {
+        $datos = $request->validate(self::reglas() + ['user_id' => 'required|exists:users,id', 'volver' => 'nullable|string']);
+        if ($request->boolean('factura') && $gasto->comprobantes()->doesntExist() && ! $request->hasFile('comprobantes')) {
+            return back()->withInput()->withErrors(['comprobantes' => 'Si el gasto tiene factura, sube la factura (PDF, XML o foto).']);
+        }
+        $gasto->update([
+            'fecha' => $datos['fecha'],
+            'monto' => $datos['monto'],
+            'categoria' => $datos['categoria'],
+            'cuarto_id' => $request->boolean('personal') ? null : ($datos['cuarto_id'] ?? null),
+            'descripcion' => $datos['descripcion'] ?? '',
+            'personal' => $request->boolean('personal'),
+            'factura' => $request->boolean('factura'),
+            'cuenta_id' => $datos['cuenta_id'] ?? null,
+            'user_id' => (int) $datos['user_id'],
+        ]);
+        foreach ($request->file('comprobantes', []) as $archivo) {
+            $this->guardarArchivo($gasto, $archivo, $request->user()->id);
+        }
+        // Regresa a la lista con los mismos filtros, solo si es una dirección de esta app.
+        $volver = $datos['volver'] ?? '';
+        $destino = str_starts_with($volver, route('gastos.index')) ? $volver : route('gastos.index');
+
+        return redirect($destino)->with('ok', 'Gasto actualizado.');
     }
 
     public function destroy(Gasto $gasto)
