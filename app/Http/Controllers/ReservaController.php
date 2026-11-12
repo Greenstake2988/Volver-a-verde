@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Cuarto;
+use App\Models\Cuenta;
 use App\Models\Reserva;
 use Illuminate\Http\Request;
 
@@ -22,8 +23,9 @@ class ReservaController extends Controller
             coalesce(sum(ish),0) as ish')->first();
 
         return view('reservas', [
-            'reservas' => $q->with('cuarto')->orderByDesc('check_in')->paginate(100)->withQueryString(),
+            'reservas' => $q->with(['cuarto', 'capturadoPor'])->orderByDesc('check_in')->paginate(100)->withQueryString(),
             'cuartos' => Cuarto::activos()->orderBy('id')->get(),
+            'caja' => Cuenta::caja(),
             'todosCuartos' => Cuarto::orderBy('id')->get(),
             'f' => $f + ['cuarto_id' => null, 'desde' => null, 'hasta' => null],
             'tot' => $t,
@@ -56,6 +58,31 @@ class ReservaController extends Controller
             array_filter($datos, fn ($v) => $v !== null)));
 
         return back()->with('ok', 'Reserva guardada.');
+    }
+
+    /**
+     * Renta de un cuarto cobrada en efectivo, fuera de Airbnb. Cualquier socio la puede capturar.
+     * Cuenta como ingreso del cuarto (utilidad y ocupación) y el dinero entra a la caja chica.
+     */
+    public function efectivo(Request $request)
+    {
+        $caja = Cuenta::caja();
+        abort_unless($caja, 422, 'Primero crea una cuenta de efectivo (caja chica) en Ajustes.');
+        $d = $request->validate([
+            'cuarto_id' => 'required|exists:cuartos,id',
+            'huesped' => 'nullable|string|max:100',
+            'check_in' => 'required|date',
+            'noches' => 'required|integer|min:1|max:365',
+            'monto' => 'required|numeric|min:0.01',
+            'fecha_pago' => 'required|date',
+            'notas' => 'nullable|string|max:500',
+        ]);
+        $r = Reserva::create(['cuarto_id' => $d['cuarto_id'], 'huesped' => $d['huesped'] ?? '', 'check_in' => $d['check_in'],
+            'noches' => $d['noches'], 'bruto' => $d['monto'], 'comision' => 0, 'impuestos' => 0,
+            'fecha_pago' => $d['fecha_pago'], 'notas' => $d['notas'] ?? null, 'origen' => 'efectivo',
+            'cuenta_id' => $caja->id, 'capturado_por' => $request->user()->id]);
+
+        return back()->with('ok', 'Renta en efectivo guardada: '.dinero($r->bruto)." de {$r->cuarto->nombre}, entró a {$caja->nombre}.");
     }
 
     public function destroy(Reserva $reserva)

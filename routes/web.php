@@ -23,6 +23,7 @@ Route::middleware(['auth', 'cambiar-password'])->group(function () {
     Route::get('/', [PanelController::class, 'resumen'])->name('resumen');
     Route::get('/flujo', [PanelController::class, 'flujo'])->name('flujo');
     Route::get('/reservas', [ReservaController::class, 'index'])->name('reservas.index');
+    Route::post('/reservas/efectivo', [ReservaController::class, 'efectivo'])->name('reservas.efectivo');
     Route::get('/gastos', [GastoController::class, 'index'])->name('gastos.index');
     Route::post('/gastos', [GastoController::class, 'store'])->name('gastos.store');
     Route::delete('/gastos/{gasto}', [GastoController::class, 'destroy'])->name('gastos.destroy');

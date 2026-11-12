@@ -185,6 +185,32 @@ class FinanzasTest extends TestCase
         $this->actingAs($admin)->get(route('flujo'))->assertOk()->assertSee('Contar la caja');
     }
 
+    public function test_socio_registra_renta_en_efectivo_que_cuenta_como_ingreso_del_cuarto(): void
+    {
+        $caja = Cuenta::caja();
+        $caja->update(['saldo_inicial' => 0, 'fecha_saldo' => '2026-10-01']);
+        $cuarto = Cuarto::first();
+        $socio = User::factory()->create(['admin' => false]);
+
+        $this->actingAs($socio)->post(route('reservas.efectivo'), ['cuarto_id' => $cuarto->id, 'huesped' => 'Pedro',
+            'check_in' => '2026-10-10', 'noches' => 2, 'monto' => 1800, 'fecha_pago' => '2026-10-10'])
+            ->assertRedirect()->assertSessionHas('ok');
+
+        $r = Reserva::sole();
+        $this->assertSame('efectivo', $r->origen);
+        $this->assertSame($socio->id, $r->capturado_por);
+        // Cuenta en la utilidad y la ocupación del cuarto...
+        $res = (new Finanzas)->resumen($this->d('2026-10-01'), $this->d('2026-10-31'));
+        $this->assertEqualsWithDelta(1800, $res['totales']['neto'], 0.01);
+        $this->assertSame(2, $res['totales']['noches']);
+        $this->assertEqualsWithDelta(1800, collect($res['por_cuarto'])->firstWhere('id', $cuarto->id)['utilidad'], 0.01);
+        // ...y el dinero entra a la caja chica, no al banco.
+        $f = (new Finanzas)->flujo(CarbonImmutable::parse('2026-10-31'));
+        $this->assertEqualsWithDelta(1800, collect($f['cuentas'])->firstWhere('id', $caja->id)['saldo'], 0.01);
+        $this->assertStringContainsString('Renta en efectivo', $f['movimientos'][0]['concepto']);
+        $this->actingAs($socio)->get(route('reservas.index'))->assertOk()->assertSee('Renta en efectivo');
+    }
+
     public function test_socio_no_puede_borrar_pagos_de_tarjeta(): void
     {
         $debito = Cuenta::where('tipo', 'debito')->first();

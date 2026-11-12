@@ -1,5 +1,22 @@
 @extends('layouts.app', ['titulo' => 'Reservas'])
 @section('contenido')
+@if ($caja)
+<div class="card">
+  <h2>Renta en efectivo</h2>
+  <p class="ayuda">Un cuarto que se rentó por fuera de Airbnb y se cobró en efectivo. Cuenta como ingreso de ese cuarto (utilidad y ocupación) y el dinero entra a {{ $caja->nombre }}.</p>
+  <form method="post" action="{{ route('reservas.efectivo') }}" class="fila">
+    @csrf
+    <select name="cuarto_id" required>@foreach ($cuartos as $c)<option value="{{ $c->id }}" @selected(old('cuarto_id') == $c->id)>{{ $c->nombre }}</option>@endforeach</select>
+    <input name="huesped" placeholder="Huésped" value="{{ old('huesped') }}">
+    <label>Llegada <input type="date" name="check_in" value="{{ old('check_in', now()->toDateString()) }}" required></label>
+    <input type="number" name="noches" min="1" placeholder="Noches" value="{{ old('noches') }}" required>
+    <input type="number" step="0.01" min="0.01" name="monto" placeholder="Cobrado en efectivo" value="{{ old('monto') }}" required>
+    <label>Se cobró el <input type="date" name="fecha_pago" value="{{ old('fecha_pago', now()->toDateString()) }}" required></label>
+    <input name="notas" placeholder="Notas" value="{{ old('notas') }}">
+    <button>Guardar</button>
+  </form>
+</div>
+@endif
 @can('admin')
 <div class="card">
   <h2>Agregar reserva</h2>
@@ -61,7 +78,7 @@
   <table class="tabla">
     <tr><th>Check-in</th><th>Cuarto</th><th>Huésped</th><th class="n">Noches</th><th class="n">Cobrado</th><th class="n">IVA</th><th class="n">Comisión</th><th class="n">Retenciones</th><th class="n">Neto</th><th>Pago</th><th></th></tr>
     @foreach ($reservas as $r)
-      <tr><td class="nw">{{ $r->check_in->toDateString() }}</td><td class="nw">{{ $r->cuarto->nombre ?? '' }}</td><td>{{ $r->huesped }}</td><td class="n">{{ $r->noches }}</td>
+      <tr><td class="nw">{{ $r->check_in->toDateString() }}</td><td class="nw">{{ $r->cuarto->nombre ?? '' }}</td><td>{{ $r->huesped }}@if ($r->origen === 'efectivo') <span class="tag ambar" title="Capturó: {{ $r->capturadoPor->name ?? '—' }}">Efectivo</span>@endif</td><td class="n">{{ $r->noches }}</td>
         <td class="n">{{ dinero($r->bruto) }}</td><td class="n">{{ dinero($r->iva_trasladado) }}</td><td class="n">{{ dinero($r->comision) }}</td><td class="n">{{ dinero($r->impuestos) }}</td><td class="n">{{ dinero($r->neto) }}</td>
         <td class="nw">{{ $r->fecha_pago?->toDateString() }}</td>
         <td>@can('admin')<form method="post" action="{{ route('reservas.destroy', $r) }}" class="inline" data-confirmar="¿Borrar esta reserva?">@csrf @method('delete')<button class="link">Borrar</button></form>@endcan</td></tr>
