@@ -95,3 +95,4 @@ a.link { padding: 2px 6px; }
 .tag.ambar { background: var(--ambar-claro); color: var(--ambar); }
 .cuentas { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .nw { white-space: nowrap; }
+.card h3 { font-size: 14px; margin: 4px 0 8px; }

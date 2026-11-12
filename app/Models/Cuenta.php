@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 /** Cuenta del negocio. En una de crédito el saldo es negativo cuando se debe. */
 class Cuenta extends Model
 {
-    public const TIPOS = ['debito' => 'Débito', 'credito' => 'Crédito'];
+    public const TIPOS = ['debito' => 'Débito', 'credito' => 'Crédito', 'efectivo' => 'Efectivo (caja chica)'];
 
     protected $table = 'cuentas';
 
@@ -35,6 +35,17 @@ class Cuenta extends Model
     public function esCredito(): bool
     {
         return $this->tipo === 'credito';
+    }
+
+    public function esEfectivo(): bool
+    {
+        return $this->tipo === 'efectivo';
+    }
+
+    /** La caja chica: la primera cuenta de efectivo. */
+    public static function caja(): ?self
+    {
+        return static::where('tipo', 'efectivo')->orderBy('id')->first();
     }
 
     /** La cuenta donde Airbnb deposita (la primera marcada, o la primera de débito). */

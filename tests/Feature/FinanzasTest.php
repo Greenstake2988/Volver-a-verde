@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Cuarto;
 use App\Models\Cuenta;
 use App\Models\Gasto;
+use App\Models\Movimiento;
 use App\Models\Reserva;
 use App\Models\Transferencia;
 use App\Models\User;
@@ -139,6 +140,49 @@ class FinanzasTest extends TestCase
         $saldo = collect((new Finanzas)->flujo(CarbonImmutable::parse('2026-11-01'))['cuentas'])->keyBy('tipo');
         $this->assertEqualsWithDelta(10000, $saldo['debito']['saldo'], 0.01);
         $this->assertEqualsWithDelta(-3000, $saldo['credito']['saldo'], 0.01);
+    }
+
+    public function test_caja_chica_retiros_gastos_en_efectivo_y_conteo(): void
+    {
+        $debito = Cuenta::where('tipo', 'debito')->first();
+        $caja = Cuenta::caja();
+        $this->assertNotNull($caja);   // la migración la crea
+        $debito->update(['saldo_inicial' => 10000, 'fecha_saldo' => '2026-10-01']);
+        $caja->update(['saldo_inicial' => 200, 'fecha_saldo' => '2026-10-01']);
+        $admin = User::factory()->create(['admin' => true]);
+
+        // Sacar 2,000 del banco para la caja: traspaso, no es salida del negocio.
+        $this->actingAs($admin)->post(route('transferencias.store'), ['fecha' => '2026-10-05', 'monto' => 2000,
+            'origen_id' => $debito->id, 'destino_id' => $caja->id])->assertRedirect()->assertSessionHas('ok');
+        Gasto::create(['fecha' => '2026-10-06', 'monto' => 350, 'categoria' => 'Insumos', 'cuenta_id' => $caja->id]);
+        $this->post(route('movimientos.store'), ['cuenta_id' => $caja->id, 'fecha' => '2026-10-07', 'monto' => 500, 'concepto' => 'Huésped pagó en efectivo']);
+
+        $f = (new Finanzas)->flujo(CarbonImmutable::parse('2026-10-10'));
+        $saldo = collect($f['cuentas'])->keyBy('tipo');
+        $this->assertEqualsWithDelta(8000, $saldo['debito']['saldo'], 0.01);
+        $this->assertEqualsWithDelta(200 + 2000 - 350 + 500, $saldo['efectivo']['saldo'], 0.01);
+        $this->assertEqualsWithDelta(2350, $f['caja_chica'], 0.01);
+        $this->assertEqualsWithDelta(500, $f['meses'][0]['entradas'], 0.01);   // el retiro no cuenta
+        $this->assertEqualsWithDelta(350, $f['meses'][0]['salidas'], 0.01);
+        $retiro = collect($f['movimientos'])->firstWhere('transferencia_id');
+        $this->assertSame("{$debito->nombre} → {$caja->nombre}", $retiro['cuenta']);
+        $this->assertStringContainsString('caja chica', $retiro['concepto']);
+        // El gasto en efectivo sí cuenta en la utilidad.
+        $this->assertEqualsWithDelta(350, (new Finanzas)->resumen($this->d('2026-10-01'), $this->d('2026-10-31'))['totales']['gastos'], 0.01);
+
+        // Al contar la caja hay 2,300: faltaron 50 y queda un ajuste de salida.
+        $this->post(route('caja.contar'), ['cuenta_id' => $caja->id, 'fecha' => '2026-10-10', 'contado' => 2300])->assertSessionHas('ok');
+        $this->assertEqualsWithDelta(-50, Movimiento::latest('id')->first()->monto, 0.01);
+        $saldo = collect((new Finanzas)->flujo(CarbonImmutable::parse('2026-10-10'))['cuentas'])->keyBy('tipo');
+        $this->assertEqualsWithDelta(2300, $saldo['efectivo']['saldo'], 0.01);
+        // Si cuadra, no se registra nada.
+        $this->post(route('caja.contar'), ['cuenta_id' => $caja->id, 'fecha' => '2026-10-10', 'contado' => 2300]);
+        $this->assertSame(2, Movimiento::count());
+        // Solo se cuenta una caja de efectivo, y solo un administrador.
+        $this->post(route('caja.contar'), ['cuenta_id' => $debito->id, 'fecha' => '2026-10-10', 'contado' => 1])->assertStatus(422);
+        $this->actingAs(User::factory()->create(['admin' => false]))
+            ->post(route('caja.contar'), ['cuenta_id' => $caja->id, 'fecha' => '2026-10-10', 'contado' => 0])->assertForbidden();
+        $this->actingAs($admin)->get(route('flujo'))->assertOk()->assertSee('Contar la caja');
     }
 
     public function test_socio_no_puede_borrar_pagos_de_tarjeta(): void
