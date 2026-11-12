@@ -48,6 +48,7 @@ Route::middleware(['auth', 'cambiar-password'])->group(function () {
         Route::post('/datos/gastos', [DatosController::class, 'importarGastos'])->name('datos.gastos');
         Route::get('/datos/exportar/{tipo}', [DatosController::class, 'exportar'])->name('datos.exportar');
         Route::post('/transferencias', [PanelController::class, 'guardarTransferencia'])->name('transferencias.store');
+        Route::post('/caja/contar', [PanelController::class, 'contarCaja'])->name('caja.contar');
         Route::delete('/transferencias/{transferencia}', [PanelController::class, 'borrarTransferencia'])->name('transferencias.destroy');
         Route::delete('/movimientos/{movimiento}', [PanelController::class, 'borrarMovimiento'])->name('movimientos.destroy');
         Route::post('/reembolsos', [PanelController::class, 'guardarReembolso'])->name('reembolsos.store');

@@ -155,6 +155,8 @@ class Finanzas
      * - Un gasto con tarjeta de crédito cuenta como salida el día que se hizo (sube la deuda).
      * - Pagar la tarjeta es una transferencia entre cuentas: no es entrada ni salida del negocio.
      * - Un gasto pagado con dinero propio de un socio no mueve ninguna cuenta hasta que se le reembolsa.
+     * - La caja chica es una cuenta de efectivo: sacar del banco para la caja es un traspaso (no es gasto)
+     *   y los gastos pagados en efectivo salen de ella.
      */
     /**
      * Lo que cada socio le debe al negocio: gastos que no son del negocio pagados con una
@@ -215,7 +217,12 @@ class Finanzas
                 $l['cuenta'] = $cuentas[$l['cuenta_id']]->nombre ?? '—';
                 if ($l['interno'] && empty($l['espejo']) && ! empty($l['destino'])) {
                     $l['cuenta'] .= ' → '.$l['destino'];
-                    $l['concepto'] = 'Pago de tarjeta (traspaso entre tus cuentas, no es gasto)';
+                    $l['concepto'] = match (true) {
+                        ($l['destino_tipo'] ?? null) === 'credito' => 'Pago de tarjeta (traspaso entre tus cuentas, no es gasto)',
+                        ($l['destino_tipo'] ?? null) === 'efectivo' => 'Efectivo para la caja chica (traspaso, no es gasto)',
+                        ($l['origen_tipo'] ?? null) === 'efectivo' => 'Efectivo de la caja chica al banco (traspaso, no es gasto)',
+                        default => 'Traspaso entre tus cuentas (no es gasto)',
+                    }.(! empty($l['nota']) ? " · {$l['nota']}" : '');
                     $l['monto'] = abs($l['monto']);
                 }
 
@@ -251,16 +258,19 @@ class Finanzas
         }
         foreach (Transferencia::with(['destino', 'socio'])->get() as $t) {
             $fecha = $t->fecha->toDateString();
-            $concepto = $t->destino_id
-                ? "Pago a {$t->destino->nombre}"
-                : 'Reembolso a '.($t->socio->name ?? 'socio');
+            $concepto = match (true) {
+                ! $t->destino_id => 'Reembolso a '.($t->socio->name ?? 'socio'),
+                $t->destino->esCredito() => "Pago a {$t->destino->nombre}",
+                default => "Traspaso a {$t->destino->nombre}",
+            };
             $concepto .= $t->concepto ? " ({$t->concepto})" : '';
             $lineas->push(['fecha' => $fecha, 'cuenta_id' => $t->origen_id, 'monto' => -$t->monto,
                 'interno' => (bool) $t->destino_id, 'concepto' => $concepto, 'transferencia_id' => $t->id,
-                'destino' => $t->destino->nombre ?? null]);
+                'destino' => $t->destino->nombre ?? null, 'destino_tipo' => $t->destino->tipo ?? null,
+                'origen_tipo' => $cuentas[$t->origen_id]->tipo ?? null, 'nota' => $t->concepto]);
             if ($t->destino_id) {
                 $lineas->push(['fecha' => $fecha, 'cuenta_id' => $t->destino_id, 'monto' => $t->monto,
-                    'interno' => true, 'concepto' => "Pago desde {$cuentas[$t->origen_id]->nombre}",
+                    'interno' => true, 'concepto' => ($t->destino->esCredito() ? 'Pago' : 'Traspaso')." desde {$cuentas[$t->origen_id]->nombre}",
                     'transferencia_id' => $t->id, 'espejo' => true]);
             }
         }
@@ -305,7 +315,8 @@ class Finanzas
 
         return [
             'cuentas' => $listaCuentas,
-            'efectivo' => collect($listaCuentas)->where('tipo', 'debito')->sum('saldo'),
+            'bancos' => collect($listaCuentas)->where('tipo', 'debito')->sum('saldo'),
+            'caja_chica' => collect($listaCuentas)->where('tipo', 'efectivo')->sum('saldo'),
             'deuda_tarjetas' => -collect($listaCuentas)->where('tipo', 'credito')->sum('saldo'),
             'por_reembolsar' => $porReembolsar,
             'total_reembolsar' => $totalReembolsar,

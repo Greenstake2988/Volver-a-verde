@@ -43,7 +43,7 @@
 @can('admin')
 <div class="card">
   <h2>Cuentas</h2>
-  <p class="ayuda">Pon el saldo que tenía cada cuenta en una fecha; a partir de ahí la app suma y resta. En las tarjetas de crédito pon lo que debías ese día.</p>
+  <p class="ayuda">Pon el saldo que tenía cada cuenta en una fecha; a partir de ahí la app suma y resta. En las tarjetas de crédito pon lo que debías ese día; en la caja chica, el efectivo que había.</p>
   <form method="post" action="{{ route('ajustes.cuentas') }}">
     @csrf
     <table class="tabla">
@@ -55,7 +55,7 @@
           <td><select name="cuentas[{{ $c->id }}][user_id]"><option value="">Nadie en especial</option>@foreach ($usuarios as $u)<option value="{{ $u->id }}" @selected($c->user_id === $u->id)>{{ $u->name }}</option>@endforeach</select></td>
           <td><input type="number" step="0.01" name="cuentas[{{ $c->id }}][saldo]" value="{{ $c->esCredito() ? abs($c->saldo_inicial) : $c->saldo_inicial }}" required></td>
           <td><input type="date" name="cuentas[{{ $c->id }}][fecha_saldo]" value="{{ $c->fecha_saldo->toDateString() }}" required></td>
-          <td>@unless ($c->esCredito())<input type="radio" name="recibe_airbnb" value="{{ $c->id }}" @checked($c->recibe_airbnb)>@endunless</td>
+          <td>@unless ($c->esCredito() || $c->esEfectivo())<input type="radio" name="recibe_airbnb" value="{{ $c->id }}" @checked($c->recibe_airbnb)>@endunless</td>
         </tr>
       @endforeach
     </table>

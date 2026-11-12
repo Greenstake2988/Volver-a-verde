@@ -132,10 +132,11 @@ CSV;
             ."05/10/2026,\"$1,450.50\",luz,CFE,,si,,\n"
             ."18/10/2026,800,Mantenimiento,Llave,Cuarto 3,,,Crédito\n"
             ."20/10/2026,300,Otros,Doctor,,si,si,propio\n"
+            ."21/10/2026,120,Insumos,Garrafones,,,,Efectivo\n"
             .",5,x,sin fecha,,,,\n";
         $r = (new Importador)->gastos($csv);
 
-        $this->assertSame(['importados' => 3, 'omitidos' => 1], $r);
+        $this->assertSame(['importados' => 4, 'omitidos' => 1], $r);
         $luz = Gasto::where('categoria', 'Luz')->sole();
         $this->assertSame('2026-10-05', $luz->fecha->toDateString());
         $this->assertSame(1450.5, $luz->monto);
@@ -145,5 +146,6 @@ CSV;
         $this->assertSame('debito', $luz->cuenta->tipo);
         $this->assertSame('credito', Gasto::where('descripcion', 'Llave')->sole()->cuenta->tipo);
         $this->assertNull(Gasto::where('descripcion', 'Doctor')->sole()->cuenta_id);
+        $this->assertSame('efectivo', Gasto::where('descripcion', 'Garrafones')->sole()->cuenta->tipo);   // caja chica
     }
 }

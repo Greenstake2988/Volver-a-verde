@@ -41,6 +41,7 @@ class PanelController extends Controller
         return view('flujo', [
             'f' => $finanzas->flujo(),
             'cuentas' => Cuenta::orderBy('id')->get(),
+            'caja' => Cuenta::caja(),
             'usuarios' => User::orderBy('name')->get(),
         ]);
     }
@@ -56,8 +57,41 @@ class PanelController extends Controller
             'concepto' => 'nullable|string|max:200',
         ]);
         Transferencia::create($d + ['concepto' => '']);
+        $destino = Cuenta::find($d['destino_id']);
+        $origen = Cuenta::find($d['origen_id']);
 
-        return back()->with('ok', 'Pago registrado.');
+        return back()->with('ok', match (true) {
+            $destino->esEfectivo() => 'Listo: '.dinero($d['monto'])." pasaron a {$destino->nombre}.",
+            $origen->esEfectivo() => 'Listo: '.dinero($d['monto'])." salieron de {$origen->nombre} a {$destino->nombre}.",
+            $destino->esCredito() => 'Pago registrado.',
+            default => 'Traspaso registrado.',
+        });
+    }
+
+    /**
+     * Contar la caja chica: se captura cuánto efectivo hay de verdad y la diferencia con lo que
+     * dice la app queda como un ajuste (lo que faltó sale, lo que sobró entra).
+     */
+    public function contarCaja(Request $request, Finanzas $finanzas)
+    {
+        $d = $request->validate([
+            'cuenta_id' => 'required|exists:cuentas,id',
+            'fecha' => 'required|date',
+            'contado' => 'required|numeric|min:0',
+        ]);
+        $caja = Cuenta::findOrFail($d['cuenta_id']);
+        abort_unless($caja->esEfectivo(), 422, 'Solo se cuenta una caja de efectivo.');
+        $saldo = collect($finanzas->flujo(CarbonImmutable::parse($d['fecha']))['cuentas'])->firstWhere('id', $caja->id)['saldo'];
+        $diferencia = round((float) $d['contado'] - $saldo, 2);
+        if ($diferencia == 0) {
+            return back()->with('ok', 'La caja cuadra: hay '.dinero($saldo).'.');
+        }
+        Movimiento::create(['cuenta_id' => $caja->id, 'fecha' => $d['fecha'], 'monto' => $diferencia,
+            'concepto' => $diferencia < 0 ? 'Faltante al contar la caja' : 'Sobrante al contar la caja']);
+
+        return back()->with('ok', $diferencia < 0
+            ? 'Faltaron '.dinero(-$diferencia).' en la caja; quedó registrado como salida. Si sabes en qué se fue, captúralo como gasto y borra este ajuste.'
+            : 'Sobraron '.dinero($diferencia).' en la caja; quedó registrado como entrada.');
     }
 
     /** Devolverle a un socio lo que pagó con su dinero. */
@@ -108,7 +142,7 @@ class PanelController extends Controller
     {
         $transferencia->delete();
 
-        return back()->with('ok', $transferencia->destino_id ? 'Pago de tarjeta borrado.' : 'Reembolso borrado.');
+        return back()->with('ok', $transferencia->destino_id ? 'Traspaso borrado.' : 'Reembolso borrado.');
     }
 
     /** Borrar un ajuste con el banco o el pago de un socio capturado por error. */

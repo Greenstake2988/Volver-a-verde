@@ -257,11 +257,15 @@ class Importador
         $cuartos = Cuarto::all()->mapWithKeys(fn ($c) => [self::norm($c->nombre) => $c->id]);
         $cuentas = Cuenta::orderBy('id')->get();
         $porDefecto = $cuentas->firstWhere('tipo', 'debito')?->id;
-        // "Pagado con": nombre de la cuenta, o palabras como "credito", "debito", "propio"/"efectivo".
-        $buscarCuenta = function (string $v) use ($cuentas, $porDefecto) {
+        // "Pagado con": nombre de la cuenta, o palabras como "credito", "debito", "efectivo"/"caja", "propio".
+        $caja = $cuentas->firstWhere('tipo', 'efectivo')?->id;
+        $buscarCuenta = function (string $v) use ($cuentas, $porDefecto, $caja) {
             $v = self::norm($v);
             if ($v === '') {
                 return $porDefecto;
+            }
+            if ($caja && in_array($v, ['efectivo', 'caja', 'caja chica', 'cash'], true)) {
+                return $caja;
             }
             if (in_array($v, ['propio', 'dinero propio', 'efectivo', 'personal', 'no'], true)) {
                 return null;
