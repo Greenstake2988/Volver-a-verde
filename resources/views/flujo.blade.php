@@ -56,7 +56,7 @@
     </div>
     <div>
       <h3>Entró efectivo</h3>
-      <p class="ayuda">Por ejemplo, un huésped que pagó en efectivo.</p>
+      <p class="ayuda">Otros ingresos en efectivo. Si es la renta de un cuarto, mejor captúrala en Reservas → “Renta en efectivo” para que cuente en la utilidad del cuarto.</p>
       <form method="post" action="{{ route('movimientos.store') }}" class="fila">
         @csrf
         <input type="hidden" name="cuenta_id" value="{{ $caja->id }}">

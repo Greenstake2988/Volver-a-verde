@@ -247,8 +247,9 @@ class Finanzas
         }
         foreach (Reserva::with('cuarto')->where('origen', '!=', 'airbnb')->get() as $r) {
             $fecha = ($r->fecha_pago ?? CarbonImmutable::parse($r->check_in)->addDay())->toDateString();
-            $lineas->push(['fecha' => $fecha, 'cuenta_id' => $airbnb?->id, 'monto' => $r->neto, 'interno' => false,
-                'concepto' => trim("Airbnb {$r->codigo} ".($r->cuarto->nombre ?? '')." {$r->huesped}")]);
+            $lineas->push(['fecha' => $fecha, 'cuenta_id' => $r->cuenta_id ?? $airbnb?->id, 'monto' => $r->neto, 'interno' => false,
+                'concepto' => trim(($r->origen === 'efectivo' ? 'Renta en efectivo ' : "Airbnb {$r->codigo} ")
+                    .($r->cuarto->nombre ?? '')." {$r->huesped}")]);
         }
         foreach (Gasto::whereNotNull('cuenta_id')->with('user')->get() as $g) {
             $lineas->push(['fecha' => $g->fecha->toDateString(), 'cuenta_id' => $g->cuenta_id, 'monto' => -$g->monto,

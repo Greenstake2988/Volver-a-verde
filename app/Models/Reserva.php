@@ -12,7 +12,7 @@ class Reserva extends Model
 
     protected $fillable = ['cuarto_id', 'codigo', 'huesped', 'check_in', 'noches', 'fecha_salida', 'bruto',
         'comision', 'iva_trasladado', 'impuestos', 'retencion_iva', 'retencion_isr', 'ish', 'origen',
-        'fecha_pago', 'notas'];
+        'fecha_pago', 'notas', 'cuenta_id', 'capturado_por'];   // origen: airbnb | manual | efectivo
 
     protected function casts(): array
     {
@@ -34,6 +34,17 @@ class Reserva extends Model
     public function cuarto(): BelongsTo
     {
         return $this->belongsTo(Cuarto::class);
+    }
+
+    /** Dónde entró el dinero de una renta fuera de Airbnb (vacío = la cuenta que recibe Airbnb). */
+    public function cuenta(): BelongsTo
+    {
+        return $this->belongsTo(Cuenta::class);
+    }
+
+    public function capturadoPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'capturado_por');
     }
 
     /**
