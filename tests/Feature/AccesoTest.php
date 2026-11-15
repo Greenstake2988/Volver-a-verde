@@ -283,12 +283,13 @@ class AccesoTest extends TestCase
         $pdf = fn () => UploadedFile::fake()->create('octubre.pdf', 200, 'application/pdf');
         $this->actingAs($ana)->post('/estados-de-cuenta', ['cuenta_id' => $suya->id, 'mes' => '2026-10', 'archivos' => [$pdf()]])
             ->assertSessionHasNoErrors()->assertRedirect('/estados-de-cuenta?anio=2026');
-        // No puede subir a la tarjeta de otro socio.
-        $this->post('/estados-de-cuenta', ['cuenta_id' => $deBeto->id, 'mes' => '2026-10', 'archivos' => [$pdf()]])->assertForbidden();
+        // También puede subir el de la tarjeta de otro socio.
+        $this->post('/estados-de-cuenta', ['cuenta_id' => $deBeto->id, 'mes' => '2026-10', 'archivos' => [$pdf()]])->assertSessionHasNoErrors();
         // Hace falta el archivo.
         $this->post('/estados-de-cuenta', ['cuenta_id' => $suya->id, 'mes' => '2026-10'])->assertSessionHasErrors('archivos');
 
-        $estado = \App\Models\EstadoCuenta::sole();
+        $this->assertSame(1, \App\Models\EstadoCuenta::where('cuenta_id', $deBeto->id)->count());
+        $estado = \App\Models\EstadoCuenta::where('cuenta_id', $suya->id)->sole();
         Storage::disk('local')->assertExists($estado->ruta);
         $this->get('/estados-de-cuenta?anio=2026')->assertOk()->assertSee('Visa Ana')->assertSee(route('estados.show', $estado));
         $this->get(route('estados.show', $estado))->assertOk();
@@ -297,7 +298,7 @@ class AccesoTest extends TestCase
         $this->actingAs($beto)->delete(route('estados.destroy', $estado))->assertForbidden();
         $this->actingAs($ana)->delete(route('estados.destroy', $estado))->assertRedirect();
         Storage::disk('local')->assertMissing($estado->ruta);
-        $this->assertSame(0, \App\Models\EstadoCuenta::count());
+        $this->assertSame(0, \App\Models\EstadoCuenta::where('cuenta_id', $suya->id)->count());
     }
 
     public function test_solo_admin_edita_gastos(): void
