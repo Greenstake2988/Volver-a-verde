@@ -29,11 +29,12 @@
     <label>¿Con qué se pagó?
       <select name="cuenta_id">
         @foreach ($cuentas as $c)
-          <option value="{{ $c->id }}" @selected((string) $pagoDefault === (string) $c->id)>{{ $c->nombre }}</option>
+          <option value="{{ $c->id }}" @selected((string) $pagoDefault === (string) $c->id) data-credito="{{ $c->esCredito() ? 1 : 0 }}">{{ $c->nombre }}</option>
         @endforeach
         <option value="" @selected((string) $pagoDefault === '')>Dinero propio del socio (el negocio se lo reembolsa)</option>
       </select>
     </label>
+    @include('partials.a-meses', ['actual' => old('meses')])
     <label class="archivo">📎 Comprobante (foto, PDF o XML)
       <input type="file" name="comprobantes[]" accept="image/*,application/pdf,.xml" multiple>
     </label>
@@ -119,6 +120,7 @@
         <td>
           @if ($g->factura)<span class="tag">Factura</span>@endif
           @if ($g->personal)<span class="tag gris">No es del negocio</span>@endif
+          @if ($g->meses)<span class="tag ambar">{{ $g->meses }} meses</span>@endif
           @if ($g->cuenta)<span class="tag gris">{{ $g->cuenta->nombre }}</span>@else<span class="tag ambar">Por reembolsar</span>@endif
         </td>
         <td class="n">{{ dinero($g->monto) }}</td>

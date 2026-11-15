@@ -24,10 +24,11 @@
     @php($pago = (string) old('cuenta_id', (string) $g->cuenta_id))
     <label>¿Con qué se pagó?
       <select name="cuenta_id">
-        @foreach ($cuentas as $c)<option value="{{ $c->id }}" @selected($pago === (string) $c->id)>{{ $c->nombre }}</option>@endforeach
+        @foreach ($cuentas as $c)<option value="{{ $c->id }}" @selected($pago === (string) $c->id) data-credito="{{ $c->esCredito() ? 1 : 0 }}">{{ $c->nombre }}</option>@endforeach
         <option value="" @selected($pago === '')>Dinero propio del socio (el negocio se lo reembolsa)</option>
       </select>
     </label>
+    @include('partials.a-meses', ['actual' => old('meses', $g->meses)])
     <label class="archivo">📎 Agregar comprobante
       <input type="file" name="comprobantes[]" accept="image/*,application/pdf,.xml" multiple>
     </label>

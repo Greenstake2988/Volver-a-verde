@@ -19,7 +19,11 @@
       <div class="t">{{ $c['nombre'] }}</div>
       @if ($c['tipo'] === 'credito')
         <div class="v {{ $c['saldo'] < 0 ? 'neg' : 'pos' }}">{{ $c['saldo'] < 0 ? 'Debes '.dinero(-$c['saldo']) : dinero($c['saldo']) }}</div>
-        <div class="s">tarjeta de crédito</div>
+        @if ($c['a_meses'] > 0 && $c['saldo'] < 0)
+          <div class="s">{{ dinero($c['a_meses']) }} son mensualidades a meses de los próximos meses · <b>para no pagar intereses: {{ dinero(max(0, -$c['saldo'] - $c['a_meses'])) }}</b></div>
+        @else
+          <div class="s">tarjeta de crédito</div>
+        @endif
       @elseif ($c['tipo'] === 'efectivo')
         <div class="v {{ $c['saldo'] >= 0 ? 'pos' : 'neg' }}">{{ dinero($c['saldo']) }}</div>
         <div class="s">efectivo que debe haber en la caja</div>

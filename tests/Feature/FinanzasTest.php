@@ -236,4 +236,23 @@ class FinanzasTest extends TestCase
         $this->assertSame('−$99.99', dinero(-99.99));
         $this->assertSame('$0.00', dinero(null));
     }
+
+    public function test_compra_a_meses_va_completa_al_gasto_y_la_tarjeta_separa_lo_que_falta_cobrar(): void
+    {
+        $visa = Cuenta::create(['nombre' => 'Visa', 'tipo' => 'credito', 'saldo_inicial' => 0, 'fecha_saldo' => '2026-01-01']);
+        $u = User::factory()->create();
+        // Refrigerador de 12,000 a 12 meses, comprado en septiembre; más 500 de contado en noviembre.
+        Gasto::create(['fecha' => '2026-09-10', 'monto' => 12000, 'categoria' => 'Mobiliario y equipo', 'cuenta_id' => $visa->id,
+            'meses' => 12, 'user_id' => $u->id]);
+        Gasto::create(['fecha' => '2026-11-05', 'monto' => 500, 'categoria' => 'Gas', 'cuenta_id' => $visa->id, 'user_id' => $u->id]);
+
+        // La utilidad lleva el gasto completo en septiembre.
+        $sep = app(Finanzas::class)->resumen($this->d('2026-09-01'), $this->d('2026-09-30'));
+        $this->assertEqualsWithDelta(12000, $sep['totales']['gastos'], 0.01);
+
+        // En noviembre el banco ya cobró 2 mensualidades (oct y nov): faltan 10 × 1,000.
+        $c = collect(app(Finanzas::class)->flujo($this->d('2026-11-15'))['cuentas'])->firstWhere('id', $visa->id);
+        $this->assertEqualsWithDelta(-12500, $c['saldo'], 0.01);
+        $this->assertEqualsWithDelta(10000, $c['a_meses'], 0.01);
+    }
 }

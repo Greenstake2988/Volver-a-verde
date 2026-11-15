@@ -309,8 +309,14 @@ class Finanzas
         $totalReembolsar = array_sum(array_column($porReembolsar, 'monto'));
         $nosDeben = $this->nosDeben(CarbonImmutable::parse($hoy));
 
+        // Compras a meses: de la deuda de la tarjeta, lo que el banco todavía no cobra (mensualidades futuras).
+        $aMeses = Gasto::whereNotNull('meses')->whereNotNull('cuenta_id')->where('fecha', '<=', $hoy)->get()
+            ->filter(fn (Gasto $g) => isset($cuentas[$g->cuenta_id]) && $g->fecha->toDateString() >= $desde($g->cuenta_id))
+            ->groupBy('cuenta_id')->map(fn ($gs) => $gs->sum(fn (Gasto $g) => $g->porCobrarAMeses(CarbonImmutable::parse($hoy))));
+
         $listaCuentas = $cuentas->map(fn (Cuenta $c) => [
             'id' => $c->id, 'nombre' => $c->nombre, 'tipo' => $c->tipo, 'saldo' => $saldos[$c->id],
+            'a_meses' => (float) ($aMeses[$c->id] ?? 0),
             'saldo_inicial' => $c->saldo_inicial, 'fecha_saldo' => $c->fecha_saldo->toDateString(),
         ])->values()->all();
 
