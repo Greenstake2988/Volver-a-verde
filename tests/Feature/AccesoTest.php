@@ -327,4 +327,21 @@ class AccesoTest extends TestCase
         // Con factura hay que subirla.
         $this->actingAs($admin)->put(route('gastos.update', $gasto), $cambios + ['factura' => 1])->assertSessionHasErrors('comprobantes');
     }
+
+    public function test_gasto_a_meses_solo_con_tarjeta_de_credito(): void
+    {
+        $socio = User::factory()->create();
+        $visa = \App\Models\Cuenta::create(['nombre' => 'Visa', 'tipo' => 'credito', 'saldo_inicial' => 0, 'fecha_saldo' => '2026-01-01']);
+        $banco = \App\Models\Cuenta::create(['nombre' => 'Banco', 'tipo' => 'debito', 'saldo_inicial' => 0, 'fecha_saldo' => '2026-01-01']);
+        $base = ['fecha' => now()->toDateString(), 'monto' => 6000, 'categoria' => 'Administración', 'descripcion' => 'x'];
+
+        $this->actingAs($socio)->post('/gastos', $base + ['cuenta_id' => $visa->id, 'meses' => 6])->assertSessionHasNoErrors();
+        $this->post('/gastos', ['cuenta_id' => $banco->id, 'meses' => 6, 'monto' => 10] + $base)->assertSessionHasNoErrors();
+        $this->post('/gastos', $base + ['cuenta_id' => $visa->id, 'meses' => 7])->assertSessionHasErrors('meses');
+
+        $this->assertSame(6, Gasto::where('monto', 6000)->sole()->meses);
+        $this->assertNull(Gasto::where('monto', 10)->sole()->meses);   // débito: de contado
+        $this->get('/gastos')->assertOk()->assertSee('6 meses');
+        $this->get('/flujo')->assertOk()->assertSee('para no pagar intereses');
+    }
 }

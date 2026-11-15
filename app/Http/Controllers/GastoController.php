@@ -117,7 +117,15 @@ class GastoController extends Controller
             'comprobantes.*' => self::REGLA_ARCHIVO,
             'user_id' => 'nullable|exists:users,id',
             'cuenta_id' => 'nullable|exists:cuentas,id',   // vacío = dinero propio, por reembolsar
+            'meses' => ['nullable', Rule::in(Gasto::OPCIONES_MESES)],
         ];
+    }
+
+    /** A meses solo aplica a tarjetas de crédito. */
+    private static function meses(array $datos): ?int
+    {
+        return ! empty($datos['meses']) && ! empty($datos['cuenta_id']) && Cuenta::find($datos['cuenta_id'])?->esCredito()
+            ? (int) $datos['meses'] : null;
     }
 
     public function store(Request $request)
@@ -136,6 +144,7 @@ class GastoController extends Controller
             'personal' => $request->boolean('personal'),
             'factura' => $request->boolean('factura'),
             'cuenta_id' => $datos['cuenta_id'] ?? null,
+            'meses' => self::meses($datos),
             'user_id' => $duenoId,
             'capturado_por' => $request->user()->id,
         ]);
@@ -189,6 +198,7 @@ class GastoController extends Controller
             'personal' => $request->boolean('personal'),
             'factura' => $request->boolean('factura'),
             'cuenta_id' => $datos['cuenta_id'] ?? null,
+            'meses' => self::meses($datos),
             'user_id' => (int) $datos['user_id'],
         ]);
         foreach ($request->file('comprobantes', []) as $archivo) {

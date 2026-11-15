@@ -13,13 +13,15 @@ class Gasto extends Model
     public const CATEGORIAS = [
         'Limpieza', 'Lavandería', 'Luz', 'Agua', 'Gas', 'Internet', 'Gasolina',
         'Mantenimiento', 'Insumos', 'Mobiliario y equipo', 'Predial',
-        'Contador', 'Sueldos', 'Impuestos', 'Otros',
+        'Administración', 'Contador', 'Sueldos', 'Impuestos', 'Otros',
     ];
+
+    public const OPCIONES_MESES = [3, 6, 9, 12, 18, 24];
 
     protected $table = 'gastos';
 
     protected $fillable = ['fecha', 'monto', 'categoria', 'cuarto_id', 'descripcion',
-        'personal', 'factura', 'cuenta_id', 'user_id', 'capturado_por'];
+        'personal', 'factura', 'cuenta_id', 'user_id', 'capturado_por', 'meses'];
 
     protected function casts(): array
     {
@@ -28,7 +30,21 @@ class Gasto extends Model
             'monto' => 'float',
             'personal' => 'boolean',
             'factura' => 'boolean',
+            'meses' => 'integer',
         ];
+    }
+
+    /** Mensualidades que el banco todavía no cobra al día $hoy (0 si es de contado). La 1ª se cobra el mes siguiente a la compra. */
+    public function porCobrarAMeses(\DateTimeInterface $hoy): float
+    {
+        if (! $this->meses) {
+            return 0.0;
+        }
+        $compra = $this->fecha;
+        $cobradas = ((int) $hoy->format('Y') - (int) $compra->format('Y')) * 12 + (int) $hoy->format('n') - (int) $compra->format('n');
+        $faltan = $this->meses - max(0, min($this->meses, $cobradas));
+
+        return round($this->monto * $faltan / $this->meses, 2);
     }
 
     public function cuarto(): BelongsTo
