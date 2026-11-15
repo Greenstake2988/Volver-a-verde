@@ -3,14 +3,14 @@
 <div class="card">
   <h2>Subir estado de cuenta</h2>
   <p class="ayuda">Sube el PDF (o foto, CSV o Excel) del estado de cuenta de cada tarjeta, uno por mes. Puedes subir varios archivos del mismo mes.</p>
-  @if ($puedeSubir->isEmpty())
-    <p class="ayuda">No tienes tarjetas asignadas. Pídele al administrador que en Ajustes ponga que tú usas la tarjeta.</p>
+  @if ($cuentas->isEmpty())
+    <p class="ayuda">Todavía no hay tarjetas ni cuentas. El administrador las agrega en Ajustes.</p>
   @else
     <form method="post" action="{{ route('estados.store') }}" enctype="multipart/form-data" class="fila">
       @csrf
       <select name="cuenta_id" required>
-        @foreach ($puedeSubir as $c)
-          <option value="{{ $c->id }}" @selected(old('cuenta_id', $puedeSubir->firstWhere('user_id', auth()->id())?->id) == $c->id)>{{ $c->nombre }}{{ $c->usuario ? ' · '.$c->usuario->name : '' }}</option>
+        @foreach ($cuentas as $c)
+          <option value="{{ $c->id }}" @selected(old('cuenta_id', $cuentas->firstWhere('user_id', auth()->id())?->id) == $c->id)>{{ $c->nombre }}{{ $c->usuario ? ' · '.$c->usuario->name : '' }}</option>
         @endforeach
       </select>
       <input type="month" name="mes" value="{{ old('mes', now()->subMonthNoOverflow()->format('Y-m')) }}" max="{{ $mesActual }}" required>

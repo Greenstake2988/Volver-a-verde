@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Cuenta;
 use App\Models\EstadoCuenta;
-use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -22,12 +21,10 @@ class EstadoCuentaController extends Controller
         $estados = EstadoCuenta::with('user')->where('mes', 'like', "$anio-%")->orderBy('created_at')->get()
             ->groupBy(fn ($e) => $e->cuenta_id.'|'.$e->mes);
 
-        $yo = $request->user();
-        $puedeSubir = $cuentas->filter(fn ($c) => self::puedeSubir($yo, $c))->values();
 
         return view('estados', [
             'anio' => $anio, 'meses' => $meses, 'cuentas' => $cuentas, 'estados' => $estados,
-            'puedeSubir' => $puedeSubir, 'mesActual' => now()->format('Y-m'),
+            'mesActual' => now()->format('Y-m'),
             'nombresMes' => ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
         ]);
     }
@@ -41,8 +38,8 @@ class EstadoCuentaController extends Controller
             'archivos.*' => self::REGLA_ARCHIVO,
         ], ['archivos.required' => 'Elige el archivo del estado de cuenta.']);
 
+        // Cualquier usuario puede subir el estado de cualquier tarjeta o cuenta.
         $cuenta = Cuenta::findOrFail($d['cuenta_id']);
-        abort_unless(self::puedeSubir($request->user(), $cuenta), 403, 'Esa tarjeta la usa otro socio.');
 
         foreach ($request->file('archivos') as $archivo) {
             EstadoCuenta::create([
@@ -78,9 +75,4 @@ class EstadoCuentaController extends Controller
         return back()->with('ok', 'Estado de cuenta borrado.');
     }
 
-    /** El admin sube de todas; un socio, de las tarjetas que usa él o que no tienen a nadie asignado. */
-    public static function puedeSubir(User $user, Cuenta $cuenta): bool
-    {
-        return $user->admin || $cuenta->user_id === null || $cuenta->user_id === $user->id;
-    }
 }
